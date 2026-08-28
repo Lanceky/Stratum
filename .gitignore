@@ -1,0 +1,47 @@
+# ── Secrets — NEVER commit ────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── Raw biometric data — NEVER commit (GDPR Art. 9 / BIPA / CUBI) ─────────
+# Derived fixtures in fixtures/*.json are safe and committed on purpose.
+fixtures/raw/
+benchmark/captures/**/*.jpg
+benchmark/captures/**/*.jpeg
+benchmark/captures/**/*.png
+benchmark/captures/**/*.mp4
+benchmark/captures/**/*.mov
+!benchmark/captures/**/.gitkeep
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# ── Node ──────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# ── OS / editor ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# ── Build artefacts ───────────────────────────────────────────────────────
+out/
+*.local
+context.original.md.bak
+
+# Markdown — kept local, not committed
+*.md

@@ -1,0 +1,11 @@
+{
+  "name": "STRATUM",
+  "short_name": "STRATUM",
+  "description": "Human presence gate for agentic workflows",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "icons": []
+}
