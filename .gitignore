@@ -53,3 +53,6 @@ context.original.md.bak
 
 # Markdown — kept local, not committed
 *.md
+
+# Unsent sponsor correspondence — personal, not part of the deliverable
+docs/outbox/

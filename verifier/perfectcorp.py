@@ -5,11 +5,18 @@ Response shapes here are verified against docs.perfectcorp.com and against a
 working third-party implementation, not assumed. The two mistakes that cost
 the most time if you get them wrong:
 
-  1. The response envelope is `data`, NOT `result`.
-  2. The task payload is flat — {"src_file_id": ..., "dst_actions": [...]} —
+  1. Authentication is an RSA token exchange, NOT a plain API-key header.
+     `PERFECTCORP_SECRET_KEY` is an RSA *public* key in base64 DER; you encrypt
+     `client_id=<id>&timestamp=<epoch_ms>` under it, trade the result for a
+     short-lived access token, and send that as `Bearer`. Sending the API key
+     directly returns 401 InvalidApiKey. Verified against the live API.
+  2. The response envelope is `data`, NOT `result` — except on the auth
+     endpoint, which uses `result`. Both verified against the live API.
+  3. The task payload is flat — {"src_file_id": ..., "dst_actions": [...]} —
      not a nested file_sets/actions structure.
 
-Four-step flow:
+Auth, then a four-step flow:
+    POST /s2s/v1.0/client/auth                   → {result: {access_token}}
     POST /s2s/v2.0/file                          → {data: {files: [{file_id, requests:[{url, headers}]}]}}
     PUT  <requests[0].url>                       → upload bytes with the given headers
     POST /s2s/v2.0/task/skin-analysis            → {data: {task_id}}
@@ -27,7 +34,9 @@ Other constraints, each an hour of debugging if rediscovered late:
 
 from __future__ import annotations
 
+import base64
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,7 +48,15 @@ from fixtures import call
 
 BASE_URL = os.getenv("PERFECTCORP_BASE_URL", "https://yce-api-01.makeupar.com")
 API_KEY = os.getenv("PERFECTCORP_API_KEY", "")
+SECRET_KEY = os.getenv("PERFECTCORP_SECRET_KEY", "")
 API_PREFIX = "/s2s/v2.0"
+AUTH_PATH = "/s2s/v1.0/client/auth"
+
+# The token the API issues is short-lived. Refreshing a minute early costs one
+# cheap call and avoids a mid-analysis 401 that would waste the units already
+# spent on an in-flight task.
+TOKEN_LIFETIME_S = 7200
+TOKEN_REFRESH_MARGIN_S = 60
 
 POLL_INTERVAL_S = 3.0
 POLL_TIMEOUT_S = 120
@@ -128,12 +145,68 @@ class SkinAnalysisResult:
         return (self.raw.get("data", {}).get("results") or {}).get("url")
 
 
-def _headers() -> dict[str, str]:
-    if not API_KEY:
+_token: str | None = None
+_token_expires_at = 0.0
+_token_lock = threading.Lock()
+
+
+def _id_token() -> str:
+    """
+    Prove possession of the API key without ever putting it on the wire.
+
+    `PERFECTCORP_SECRET_KEY` is an RSA *public* key, which reads backwards until
+    you notice what it is for: only Perfect Corp holds the private half, so a
+    payload encrypted under it is readable by them alone. The timestamp is what
+    stops a captured id_token being replayed, so it must be milliseconds and it
+    must be current — a clock more than a few minutes out will fail auth with a
+    message that blames the key.
+    """
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.primitives.serialization import load_der_public_key
+
+    key = load_der_public_key(base64.b64decode(SECRET_KEY))
+    payload = f"client_id={API_KEY}&timestamp={int(time.time() * 1000)}"
+    return base64.b64encode(key.encrypt(payload.encode(), padding.PKCS1v15())).decode()
+
+
+def access_token(force: bool = False) -> str:
+    """
+    A bearer token, minted on demand and cached until it is nearly expired.
+
+    Locked because the capture pipeline may call this from more than one thread,
+    and two simultaneous refreshes would burn a request against a rate limit
+    that counts per token *and* per IP.
+    """
+    global _token, _token_expires_at
+    if not API_KEY or not SECRET_KEY:
         raise PerfectCorpError(
-            "PERFECTCORP_API_KEY is not set. Run in replay mode, or add the key to .env."
+            "PERFECTCORP_API_KEY and PERFECTCORP_SECRET_KEY must both be set. "
+            "The secret is the base64 RSA public key from the API console, not "
+            "a password. Run in replay mode if you have neither."
         )
-    return {"Authorization": API_KEY, "Content-Type": "application/json"}
+    with _token_lock:
+        if not force and _token and time.time() < _token_expires_at:
+            return _token
+        with _client() as http:
+            r = http.post(BASE_URL + AUTH_PATH,
+                          json={"client_id": API_KEY, "id_token": _id_token()},
+                          headers={"Content-Type": "application/json"})
+        if r.status_code != 200:
+            raise PerfectCorpError(
+                f"auth failed ({r.status_code}): {r.text[:200]}. Check the key is "
+                f"Server-to-Server, not Camera Kit, and that the system clock is correct."
+            )
+        # This endpoint answers under `result`; every other one uses `data`.
+        token = (r.json().get("result") or {}).get("access_token")
+        if not token:
+            raise PerfectCorpError(f"auth returned no access_token: {r.text[:200]}")
+        _token, _token_expires_at = token, time.time() + TOKEN_LIFETIME_S - TOKEN_REFRESH_MARGIN_S
+        return token
+
+
+def _headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {access_token()}",
+            "Content-Type": "application/json"}
 
 
 def _client() -> httpx.Client:

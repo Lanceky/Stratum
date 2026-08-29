@@ -11,6 +11,8 @@ All offline.
 import sys
 from pathlib import Path
 
+import time
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -20,17 +22,61 @@ from dimensions import STABLE, VOLATILE  # noqa: E402
 
 
 # ── auth ──────────────────────────────────────────────────────────────────
-def test_auth_header_is_plain_not_bearer(monkeypatch):
-    monkeypatch.setattr(pc, "API_KEY", "test-key-123")
+# Auth is an RSA token exchange, verified against the live API. An earlier
+# version of this file asserted a plain `Authorization: <key>` header, which the
+# API rejects with 401 InvalidApiKey — the assertion was wrong, not the API.
+def test_auth_header_is_a_bearer_token(monkeypatch):
+    monkeypatch.setattr(pc, "access_token", lambda *a, **k: "minted-token")
     h = pc._headers()
-    assert h["Authorization"] == "test-key-123"
-    assert not h["Authorization"].lower().startswith("bearer")
+    assert h["Authorization"] == "Bearer minted-token"
 
 
-def test_missing_key_raises_clearly(monkeypatch):
+def test_the_api_key_is_never_sent_directly(monkeypatch):
+    """
+    The key proves identity by decrypting, not by being transmitted. Putting it
+    in a header both fails and needlessly exposes it.
+    """
+    monkeypatch.setattr(pc, "API_KEY", "sk-secret-value")
+    monkeypatch.setattr(pc, "access_token", lambda *a, **k: "minted-token")
+    assert "sk-secret-value" not in "".join(pc._headers().values())
+
+
+def test_missing_credentials_raise_clearly(monkeypatch):
     monkeypatch.setattr(pc, "API_KEY", "")
+    monkeypatch.setattr(pc, "SECRET_KEY", "")
+    monkeypatch.setattr(pc, "_token", None)
     with pytest.raises(pc.PerfectCorpError, match="PERFECTCORP_API_KEY"):
-        pc._headers()
+        pc.access_token(force=True)
+
+
+def test_missing_secret_alone_still_raises(monkeypatch):
+    """The RSA public key is as required as the id — without it there is no
+    id_token to trade, and the failure should say so rather than 401."""
+    monkeypatch.setattr(pc, "API_KEY", "sk-present")
+    monkeypatch.setattr(pc, "SECRET_KEY", "")
+    monkeypatch.setattr(pc, "_token", None)
+    with pytest.raises(pc.PerfectCorpError, match="SECRET_KEY"):
+        pc.access_token(force=True)
+
+
+def test_token_is_cached_between_calls(monkeypatch):
+    """Re-authenticating per request would burn a rate limit counted per token
+    AND per IP, for no gain."""
+    monkeypatch.setattr(pc, "_token", "cached-token")
+    monkeypatch.setattr(pc, "_token_expires_at", time.time() + 3600)
+    monkeypatch.setattr(pc, "API_KEY", "sk-present")
+    monkeypatch.setattr(pc, "SECRET_KEY", "irrelevant-when-cached")
+    assert pc.access_token() == "cached-token"
+
+
+def test_an_expired_token_is_not_reused(monkeypatch):
+    """A stale token means a mid-analysis 401, wasting units already spent."""
+    monkeypatch.setattr(pc, "_token", "stale-token")
+    monkeypatch.setattr(pc, "_token_expires_at", time.time() - 1)
+    monkeypatch.setattr(pc, "API_KEY", "")
+    monkeypatch.setattr(pc, "SECRET_KEY", "")
+    with pytest.raises(pc.PerfectCorpError):
+        pc.access_token()
 
 
 # ── response envelope: `data`, not `result` ───────────────────────────────

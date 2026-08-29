@@ -7,6 +7,8 @@ scipy==1.15.0
 opencv-python-headless==4.11.0.86
 pillow==11.1.0
 httpx==0.28.1
+# Perfect Corp auth is an RSA token exchange, not a plain key header.
+cryptography==50.0.1
 pydantic==2.10.5
 pytest==8.3.4
 matplotlib==3.10.0
