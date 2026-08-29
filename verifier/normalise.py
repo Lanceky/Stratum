@@ -229,6 +229,36 @@ class Registration:
                 "scale": self.scale, "distance": self.distance}
 
 
+@dataclass
+class Match:
+    """
+    A registration plus the correspondences it was scored on.
+
+    `register` returns only the summary, which is all identity needs. Check 1
+    needs the actual matched pairs: telling a face from a photograph means
+    fitting a second, richer transform to the *same* points and asking whether
+    it explains them any better.
+    """
+
+    a_frame: np.ndarray      # `a` in its canonical frame
+    b_frame: np.ndarray      # `b` in its canonical frame
+    i: np.ndarray            # indices into a_frame
+    j: np.ndarray            # indices into b_frame, paired with i
+    a_aligned: np.ndarray    # a_frame after the recovered similarity transform
+    registration: Registration
+
+    @property
+    def pairs(self) -> tuple[np.ndarray, np.ndarray]:
+        """Matched points as (source, destination), in the canonical frame."""
+        return self.a_frame[self.i], self.b_frame[self.j]
+
+    def residuals(self) -> np.ndarray:
+        """Per-pair distance left over after the similarity transform."""
+        if len(self.i) == 0:
+            return np.zeros(0)
+        return np.linalg.norm(self.a_aligned[self.i] - self.b_frame[self.j], axis=1)
+
+
 def _rot(deg: float) -> np.ndarray:
     th = math.radians(deg)
     return np.array([[math.cos(th), -math.sin(th)], [math.sin(th), math.cos(th)]])
@@ -338,13 +368,13 @@ def _seed_translations(a: np.ndarray, b: np.ndarray, wa: np.ndarray,
             for k in np.argsort(-counts)[:top]]
 
 
-def register(a: np.ndarray, b: np.ndarray, *, radius: float = 0.05,
+def match(a: np.ndarray, b: np.ndarray, *, radius: float = 0.05,
              size_tol: float = 0.6,
              anneal: tuple[float, ...] = (2.0, 1.4, 1.0),
              seeds: int = 3, bin_size: float = 0.10,
              restarts: tuple[float, ...] = tuple(float(d)
                                                  for d in range(0, 360, 30))
-             ) -> Registration:
+             ) -> "Match":
     """
     Align constellation `a` onto `b` and report how much of it actually matches.
 
@@ -372,13 +402,16 @@ def register(a: np.ndarray, b: np.ndarray, *, radius: float = 0.05,
     a = np.asarray(a, float)
     b = np.asarray(b, float)
     if len(a) < 3 or len(b) < 3:
-        return Registration(0.0, 0, float("inf"), 0.0, 1.0)
+        return Match(np.zeros((0, 2)), np.zeros((0, 2)), np.array([], int),
+                     np.array([], int), np.zeros((0, 2)),
+                     Registration(0.0, 0, float("inf"), 0.0, 1.0))
 
     fa, _ = canonical_frame(a)
     fb, _ = canonical_frame(b)
     wa, wb = _rel_weights(a), _rel_weights(b)
     denom = min(len(fa), len(fb))
-    best = Registration(0.0, 0, float("inf"), 0.0, 1.0)
+    best = Match(fa, fb, np.array([], int), np.array([], int), fa,
+                 Registration(0.0, 0, float("inf"), 0.0, 1.0))
 
     for deg in restarts:
         rotated = fa @ _rot(deg).T
@@ -400,12 +433,17 @@ def register(a: np.ndarray, b: np.ndarray, *, radius: float = 0.05,
                 inlier_ratio=len(i) / denom, inliers=len(i), rmse=rmse,
                 rotation_deg=deg + math.degrees(math.atan2(R[1, 0], R[0, 0])),
                 scale=float(s))
-            if cand.inlier_ratio > best.inlier_ratio or (
-                    cand.inlier_ratio == best.inlier_ratio
-                    and cand.rmse < best.rmse):
-                best = cand
+            if cand.inlier_ratio > best.registration.inlier_ratio or (
+                    cand.inlier_ratio == best.registration.inlier_ratio
+                    and cand.rmse < best.registration.rmse):
+                best = Match(fa, fb, i, j, moved, cand)
 
     return best
+
+
+def register(a: np.ndarray, b: np.ndarray, **kw) -> Registration:
+    """How much of constellation `a` matches `b`. See `match` for the details."""
+    return match(a, b, **kw).registration
 
 
 def constellation_distance(a: np.ndarray, b: np.ndarray, **kw) -> float:

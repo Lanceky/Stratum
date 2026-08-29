@@ -193,4 +193,84 @@ def compare(pair: ComparePair) -> dict:
     }
 
 
-# POST /check/presence, /check/authenticity, /check/binding — Steps 5, 6, 7.
+# ── check 1: presence (Step 5) ────────────────────────────────────────────
+class ChallengeRequest(BaseModel):
+    nonce: str = Field(min_length=8)
+    n_frames: int | None = None
+
+
+class PresenceRequest(BaseModel):
+    """A completed challenge, ready to be judged."""
+
+    nonce: str = Field(min_length=8)
+    issued_at: float
+    frames: list[dict]
+    gate_id: str | None = None
+    n_frames: int | None = None
+
+
+@app.post("/challenge")
+def issue_challenge(body: ChallengeRequest) -> dict:
+    """
+    What the client must do, derived from the nonce it was handed.
+
+    The spec is regenerated from the nonce on every call rather than stored, so
+    there is no server state for an attacker to race and nothing to keep in
+    sync. The predictions are withheld: telling a client which way each score
+    must move is telling a forger what to fake.
+    """
+    import challenge as ch
+
+    kw = {"n_frames": body.n_frames} if body.n_frames else {}
+    try:
+        return ch.derive(body.nonce, **kw).client_view()
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/check/presence")
+def check_presence(body: PresenceRequest) -> dict:
+    """
+    Was a live human in front of a real camera when this nonce was issued?
+
+    The challenge is re-derived from the nonce here too. Nothing the client
+    sends can influence what it was supposed to do, which is the property that
+    makes a replayed session detectable at all.
+
+    A `gate_id` writes the verdict to `evidence` against check 1, including the
+    signal that decided it — a reviewer opening this gate later needs to know
+    which physics failed, not just that something did.
+    """
+    import challenge as ch
+    from checks.presence import evaluate
+
+    kw = {"n_frames": body.n_frames} if body.n_frames else {}
+    try:
+        spec = ch.derive(body.nonce, **kw)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    if len(body.frames) != len(spec.frames):
+        raise HTTPException(
+            422, f"challenge asked for {len(spec.frames)} frames, "
+                 f"got {len(body.frames)}")
+
+    result = evaluate(body.frames, spec, issued_at=body.issued_at).as_dict()
+
+    if body.gate_id:
+        if store.get("gates", body.gate_id) is None:
+            raise HTTPException(404, "no such gate")
+        store.add_evidence(body.gate_id, 1, result["score"], {
+            "passed": result["passed"],
+            "failed": result["failed"],
+            "triggering_signal": result["failed"][0] if result["failed"] else None,
+            "limitations": result["limitations"],
+            "signals": {s["name"]: {"passed": s["passed"], "score": s["score"]}
+                        for s in result["signals"]},
+        })
+        result["gate_id"] = body.gate_id
+
+    return result
+
+
+# POST /check/authenticity, /check/binding — Steps 6, 7.
