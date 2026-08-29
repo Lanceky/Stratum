@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help smoke seed capture setup dev verifier frontend replay benchmark units test clean
+.PHONY: help smoke seed capture gate-demo schema setup dev verifier frontend replay benchmark units test clean
 
 help: ## Show this help
 	@echo "STRATUM — make targets"
@@ -26,6 +26,13 @@ seed: ## Generate synthetic fixtures so the pipeline runs before credentials lan
 capture: ## Run the capture pipeline. IMG=path/to/face.jpg [MODE=auto to record]
 	@cd verifier && STRATUM_API_MODE=$${MODE:-replay} .venv/bin/python pipeline.py \
 		../$(or $(IMG),fixtures/synthetic/synthetic_face.jpg) --plot
+
+gate-demo: ## The Step 3 demo beat — an agent refused at the boundary
+	@cd verifier && .venv/bin/python demo_gate.py
+
+schema: ## Emit the 9-table data model for import into Xano
+	@cd verifier && .venv/bin/python -c \
+		"import json,schema; print(json.dumps(schema.xano_export(), indent=2))"
 
 verifier: ## Run the Python verifier sidecar on :8000
 	@cd verifier && .venv/bin/uvicorn app:app --reload --port 8000
