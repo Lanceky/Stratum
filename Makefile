@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help smoke setup dev verifier frontend replay benchmark units test clean
+.PHONY: help smoke seed capture setup dev verifier frontend replay benchmark units test clean
 
 help: ## Show this help
 	@echo "STRATUM — make targets"
@@ -13,12 +13,19 @@ help: ## Show this help
 
 setup: ## One-time: create .env, install deps
 	@[ -f .env ] || (cp .env.example .env && echo "✓ created .env — now fill it in")
-	@cd verifier && python3 -m venv .venv 2>/dev/null || true
+	@cd verifier && python3.13 -m venv .venv 2>/dev/null || python3 -m venv .venv 2>/dev/null || true
 	@cd verifier && .venv/bin/pip install -q -r requirements.txt && echo "✓ verifier deps installed"
 	@cd frontend && npm install --silent && echo "✓ frontend deps installed"
 
 smoke: ## Verify every sponsor credential (Step 1 DoD)
 	@bash scripts/smoke/run-all.sh
+
+seed: ## Generate synthetic fixtures so the pipeline runs before credentials land
+	@cd verifier && .venv/bin/python seed_fixtures.py
+
+capture: ## Run the capture pipeline. IMG=path/to/face.jpg [MODE=auto to record]
+	@cd verifier && STRATUM_API_MODE=$${MODE:-replay} .venv/bin/python pipeline.py \
+		../$(or $(IMG),fixtures/synthetic/synthetic_face.jpg) --plot
 
 verifier: ## Run the Python verifier sidecar on :8000
 	@cd verifier && .venv/bin/uvicorn app:app --reload --port 8000

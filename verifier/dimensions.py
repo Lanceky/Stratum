@@ -40,3 +40,24 @@ ALL_SD_CONCERNS = STABLE + VOLATILE + [
 ]
 
 assert not set(STABLE) & set(VOLATILE), "a dimension cannot be both stable and volatile"
+
+
+def base(score_key: str) -> str:
+    """
+    Normalise a Perfect Corp score key to its dimension name.
+
+    The API returns `hd_pore`, and `hd_pore:forehead` for per-region entries.
+    Both are the `pore` dimension. Without this, the STABLE/VOLATILE split
+    silently matches nothing in HD mode.
+
+        base("hd_pore:forehead") -> "pore"
+    """
+    return score_key.split(":", 1)[0].removeprefix("hd_")
+
+
+def is_stable(score_key: str) -> bool:
+    return base(score_key) in STABLE
+
+
+def is_volatile(score_key: str) -> bool:
+    return base(score_key) in VOLATILE

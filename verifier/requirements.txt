@@ -1,3 +1,5 @@
+# Requires Python 3.13. Python 3.14 has no scipy/opencv wheels yet and will
+# try to build from source, which fails. `make setup` prefers python3.13.
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 numpy==2.2.1

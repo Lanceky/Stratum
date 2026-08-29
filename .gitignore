@@ -8,8 +8,16 @@
 *.pfx
 
 # ── Raw biometric data — NEVER commit (GDPR Art. 9 / BIPA / CUBI) ─────────
-# Derived fixtures in fixtures/*.json are safe and committed on purpose.
+# Recorded API responses in fixtures/*.json are derived, not biometric, and
+# are committed on purpose — they are the record of what the API actually
+# returned. Everything under fixtures/synthetic/ is invented and regenerable
+# with `make seed`, so it stays out of the repo.
 fixtures/raw/
+fixtures/synthetic/
+fixtures/derived/
+fixtures/units.log
+fixtures/masks/
+benchmark/constellation_*.png
 benchmark/captures/**/*.jpg
 benchmark/captures/**/*.jpeg
 benchmark/captures/**/*.png
