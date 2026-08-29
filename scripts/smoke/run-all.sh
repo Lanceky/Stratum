@@ -30,11 +30,19 @@ echo -e "${BOLD}─────────────────────�
 # Step 1's gate: these three must be green before Step 2 starts.
 echo
 echo -e "${BOLD}Step 2 readiness gate${NC} ${DIM}(implementation.md Step 1)${NC}"
+# Scoped to each service's own section: a fixed -A window spills into the next
+# service and reports a green for a credential that was never set.
+# Green means "this credential works now" — at least one PASS and no FAIL.
+# A WAIT is allowed, because several refer to later steps rather than to access.
 for svc in "Perfect Corp" "Xano" "name.com"; do
-  if grep -A6 "▸ $svc" "$OUT" | grep -q 'PASS'; then
-    echo -e "  ${GRN}✓${NC} $svc"
-  else
+  section=$(awk -v s="▸ $svc" '
+    index($0, s) { on = 1; next }
+    /▸ / { on = 0 }
+    on { print }' "$OUT")
+  if grep -q 'FAIL' <<< "$section" || ! grep -q 'PASS' <<< "$section"; then
     echo -e "  ${RED}✗${NC} $svc — blocking"
+  else
+    echo -e "  ${GRN}✓${NC} $svc"
   fi
 done
 
