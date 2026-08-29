@@ -71,14 +71,26 @@ def fixture_key(op: str, payload: Any) -> str:
     return f"{op}__{hashlib.sha256(blob).hexdigest()[:16]}"
 
 
-def resolve(op: str, payload: Any) -> Path | None:
-    """Recorded fixture if one exists, else the synthetic stand-in, else None."""
+def resolve(op: str, payload: Any, *, synthetic_ok: bool = True) -> Path | None:
+    """
+    Recorded fixture if one exists, else the synthetic stand-in, else None.
+
+    `synthetic_ok=False` asks for recorded data only. That distinction is what
+    stops `auto` mode treating a placeholder as something it already has and
+    never calling the real API — which would quietly turn a benchmark that
+    claims to be measured into one made of stand-ins.
+    """
     name = f"{fixture_key(op, payload)}.json"
-    for d in (FIXTURE_DIR, SYNTHETIC_DIR):
-        p = d / name
-        if p.exists():
-            return p
+    roots = (FIXTURE_DIR, SYNTHETIC_DIR) if synthetic_ok else (FIXTURE_DIR,)
+    for d in roots:
+        candidate = d / name
+        if candidate.exists():
+            return candidate
     return None
+
+
+def is_synthetic(path: Path) -> bool:
+    return SYNTHETIC_DIR in path.parents
 
 
 def call(op: str, payload: Any, live_fn: Callable[[], Any]) -> Any:
@@ -86,14 +98,17 @@ def call(op: str, payload: Any, live_fn: Callable[[], Any]) -> Any:
     Return a recorded response if we have one; otherwise call the real API,
     record it, and charge the unit budget.
 
-    MODE=replay  never calls out. Raises if no fixture exists — a loud failure
-                 is correct here, because a silent live call costs money.
-    MODE=auto    fixture if present, else live + record.
+    MODE=replay  never calls out. Uses a synthetic stand-in if that is all there
+                 is. Raises if there is nothing — a loud failure is correct,
+                 because a silent live call costs money.
+    MODE=auto    recorded fixture if present, else live + record. A synthetic
+                 stand-in does NOT count: `auto` exists to obtain real data, and
+                 treating a placeholder as a hit means the real call never
+                 happens and the recording never appears.
     MODE=live    always live.
     """
-    found = resolve(op, payload)
-
     if MODE == "replay":
+        found = resolve(op, payload)
         if found is None:
             raise FileNotFoundError(
                 f"No fixture for {op} ({fixture_key(op, payload)}). "
@@ -101,8 +116,10 @@ def call(op: str, payload: Any, live_fn: Callable[[], Any]) -> Any:
             )
         return json.loads(found.read_text())
 
-    if MODE == "auto" and found is not None:
-        return json.loads(found.read_text())
+    if MODE == "auto":
+        recorded = resolve(op, payload, synthetic_ok=False)
+        if recorded is not None:
+            return json.loads(recorded.read_text())
 
     units = UNIT_COST.get(op, 0)
     if _spent() + units > CEILING:
@@ -111,11 +128,14 @@ def call(op: str, payload: Any, live_fn: Callable[[], Any]) -> Any:
             f"Raise UNIT_BUDGET_CEILING deliberately, or work in replay mode."
         )
 
+    # Charged on attempt, not on success. Perfect Corp bills a task that errors
+    # or is abandoned mid-run, so recording only successes lets the local ledger
+    # drift below the real spend — the one direction a budget guard must not err.
+    _record_units(op, units)
     resp = live_fn()
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     (FIXTURE_DIR / f"{fixture_key(op, payload)}.json").write_text(
         json.dumps(resp, indent=2, default=str))
-    _record_units(op, units)
     return resp
 
 

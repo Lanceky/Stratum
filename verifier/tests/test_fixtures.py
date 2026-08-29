@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import fixtures  # noqa: E402
+import fixtures as fx  # noqa: E402
 from dimensions import STABLE, VOLATILE  # noqa: E402
 
 
@@ -103,3 +104,56 @@ def test_volatile_dimensions_are_never_identity():
     for d in ("moisture", "redness", "oiliness", "radiance"):
         assert d in VOLATILE
         assert d not in STABLE
+
+
+# ── auto mode must not mistake a placeholder for real data ────────────────
+def test_auto_mode_ignores_synthetic_fixtures(tmp_path, monkeypatch):
+    """
+    A synthetic stand-in satisfying `auto` means the live call never happens and
+    the real recording never appears — a benchmark that claims to be measured
+    would quietly be made of placeholders.
+    """
+    monkeypatch.setattr(fx, "FIXTURE_DIR", tmp_path / "rec")
+    monkeypatch.setattr(fx, "SYNTHETIC_DIR", tmp_path / "rec" / "synthetic")
+    fx.SYNTHETIC_DIR.mkdir(parents=True)
+    key = fx.fixture_key("skin-analysis-hd", {"a": 1})
+    (fx.SYNTHETIC_DIR / f"{key}.json").write_text('{"_synthetic": true}')
+
+    monkeypatch.setattr(fx, "MODE", "auto")
+    monkeypatch.setattr(fx, "UNIT_LOG", tmp_path / "units.log")
+    called = []
+    out = fx.call("skin-analysis-hd", {"a": 1}, lambda: (called.append(1), {"real": True})[1])
+    assert called, "auto mode returned the synthetic stand-in instead of calling out"
+    assert out == {"real": True}
+
+
+def test_replay_mode_still_accepts_synthetic_fixtures(tmp_path, monkeypatch):
+    """Replay must keep working with no credentials — that is what it is for."""
+    monkeypatch.setattr(fx, "FIXTURE_DIR", tmp_path / "rec")
+    monkeypatch.setattr(fx, "SYNTHETIC_DIR", tmp_path / "rec" / "synthetic")
+    fx.SYNTHETIC_DIR.mkdir(parents=True)
+    key = fx.fixture_key("skin-analysis-hd", {"a": 1})
+    (fx.SYNTHETIC_DIR / f"{key}.json").write_text('{"_synthetic": true}')
+
+    monkeypatch.setattr(fx, "MODE", "replay")
+    assert fx.call("skin-analysis-hd", {"a": 1}, lambda: pytest.fail("called out")) \
+        == {"_synthetic": True}
+
+
+def test_units_are_charged_even_when_the_call_fails(tmp_path, monkeypatch):
+    """
+    Perfect Corp bills a task that errors mid-run. Recording only successes lets
+    the ledger drift below real spend, which is the one direction a budget guard
+    must never err in.
+    """
+    monkeypatch.setattr(fx, "FIXTURE_DIR", tmp_path / "rec")
+    monkeypatch.setattr(fx, "SYNTHETIC_DIR", tmp_path / "syn")
+    monkeypatch.setattr(fx, "UNIT_LOG", tmp_path / "units.log")
+    monkeypatch.setattr(fx, "MODE", "live")
+
+    def boom():
+        raise RuntimeError("error_no_face")
+
+    with pytest.raises(RuntimeError):
+        fx.call("skin-analysis-hd", {"a": 1}, boom)
+    assert fx._spent() == fx.UNIT_COST["skin-analysis-hd"]
