@@ -32,6 +32,15 @@ VOLATILE = [
 # Channels whose response direction under a coloured flash is asserted by check 1.
 ILLUMINATION_RESPONSIVE = ["redness", "radiance", "oiliness"]
 
+# HD returns per-zone breakdowns; SD does not. These are the zone names Perfect
+# Corp uses (context.md §API): `hd_pore_output_{forehead,nose,cheek,all}.png`
+# and a six-zone wrinkle map. Check 2 reads them — the per-zone *pattern* is
+# what it examines, so the names have to be exact.
+PORE_ZONES = ("forehead", "nose", "cheek")
+WRINKLE_ZONES = ("forehead", "glabella", "periorbital_left", "periorbital_right",
+                 "nasolabial_left", "nasolabial_right")
+ZONED = {"pore": PORE_ZONES, "wrinkle": WRINKLE_ZONES}
+
 ALL_SD_CONCERNS = STABLE + VOLATILE + [
     "acne",
     "dark_circle_v2",
@@ -61,3 +70,14 @@ def is_stable(score_key: str) -> bool:
 
 def is_volatile(score_key: str) -> bool:
     return base(score_key) in VOLATILE
+
+
+def region(score_key: str) -> str | None:
+    """
+    The zone a score belongs to, or None for a whole-face score.
+
+        region("hd_pore:forehead") -> "forehead"
+        region("hd_pore")           -> None
+    """
+    _, sep, zone = score_key.partition(":")
+    return zone if sep and zone != "whole" else None

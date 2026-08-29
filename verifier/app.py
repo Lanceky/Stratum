@@ -199,6 +199,13 @@ class ChallengeRequest(BaseModel):
     n_frames: int | None = None
 
 
+class AuthenticityRequest(BaseModel):
+    """One capture's scores, to be judged against a genuine-population baseline."""
+
+    scores: dict[str, float]
+    gate_id: str | None = None
+
+
 class PresenceRequest(BaseModel):
     """A completed challenge, ready to be judged."""
 
@@ -273,4 +280,70 @@ def check_presence(body: PresenceRequest) -> dict:
     return result
 
 
-# POST /check/authenticity, /check/binding — Steps 6, 7.
+_baseline = None
+
+
+def authenticity_baseline():
+    """
+    The genuine-population reference check 2 is measured against.
+
+    Fitted once and cached, because fitting is the expensive part and the
+    baseline is a property of the population rather than of any request.
+
+    Today it is fitted from `synth_zones`, which encodes dermatological anatomy
+    — the T-zone is oilier and more porous than the cheeks in everyone — and
+    nothing about any forgery. That makes it a legitimate *null* model and an
+    illegitimate source of hit rates, which is why this endpoint reports
+    calibrated false-positive rates and marks the baseline `provisional`.
+
+    Step 12 refits this on real captures from the genuine set. The call
+    signature does not change, and neither does anything downstream.
+    """
+    global _baseline
+    if _baseline is None:
+        import synth_zones as sz
+        from checks.authenticity import fit
+        _baseline = fit(sz.population(2000, seed=1))
+    return _baseline
+
+
+@app.post("/check/authenticity")
+def check_authenticity(body: AuthenticityRequest) -> dict:
+    """
+    Does this face's per-zone texture look like it came off a real person?
+
+    Two one-sided tests, each asking a different question, because they catch
+    different failures and neither subsumes the other: `contrast` asks whether
+    there is enough structure across zones at all, `zone_pattern` asks whether
+    the structure sits where anatomy puts it.
+
+    An SD capture carries no per-zone breakdown, so the check returns
+    `ran=false` and does *not* pass. Check 3 has to be able to tell "looked and
+    was satisfied" apart from "could not look", and collapsing the two would let
+    a downgrade to SD silently clear the check.
+    """
+    from checks.authenticity import evaluate
+
+    if not body.scores:
+        raise HTTPException(422, "no scores to evaluate")
+
+    result = evaluate(body.scores, authenticity_baseline()).as_dict()
+
+    if body.gate_id:
+        if store.get("gates", body.gate_id) is None:
+            raise HTTPException(404, "no such gate")
+        store.add_evidence(body.gate_id, 2, result["score"], {
+            "passed": result["passed"],
+            "ran": result["ran"],
+            "flagged_by": result["flagged_by"],
+            "limitations": result["limitations"],
+            "signals": {s["name"]: {"passed": s["passed"],
+                                    "p_value": s["p_value"]}
+                        for s in result["signals"]},
+        })
+        result["gate_id"] = body.gate_id
+
+    return result
+
+
+# POST /check/binding — Step 7.
