@@ -122,5 +122,75 @@ def schema_export() -> dict:
     return s.xano_export()
 
 
-# POST /verify — implemented in Step 4.
+# ── normalisation (Step 4) ────────────────────────────────────────────────
+class CaptureBundle(BaseModel):
+    """One capture, in the shape `pipeline.py` produces."""
+
+    source: str | None = None
+    scores: dict[str, float] = Field(default_factory=dict)
+    face_attributes: dict = Field(default_factory=dict)
+    constellations: dict[str, list[list[float]]] = Field(default_factory=dict)
+
+
+class ComparePair(BaseModel):
+    a: CaptureBundle
+    b: CaptureBundle
+
+
+@app.post("/verify")
+def verify(bundle: CaptureBundle) -> dict:
+    """
+    Turn a raw capture into comparable numbers.
+
+    No decision is made here. Normalisation and judgement are kept apart so the
+    checks in Steps 5-7 can be argued about independently of the arithmetic
+    that feeds them, and so a stored constellation can be re-scored later
+    against better population statistics without recapturing anything.
+    """
+    from normalise import normalise_bundle
+
+    out = normalise_bundle(bundle.model_dump())
+    if not out["identity_vector"] and not out["constellations"]:
+        raise HTTPException(422, "bundle carries neither scores nor constellations")
+    return out
+
+
+@app.post("/verify/compare")
+def compare(pair: ComparePair) -> dict:
+    """
+    Distance between two captures, on each channel that carries identity.
+
+    Reported per channel rather than fused into one number: the channels fail
+    in different ways, and a caller that cannot see which one disagreed cannot
+    tell a pose problem from an impostor. Thresholds belong to Steps 5-7, so
+    none are applied here.
+    """
+    import numpy as np
+
+    from normalise import normalise_bundle, register, vector_distance
+
+    a = normalise_bundle(pair.a.model_dump())
+    b = normalise_bundle(pair.b.model_dump())
+
+    geometric = {}
+    for name in sorted(set(a["constellations"]) & set(b["constellations"])):
+        pa = np.array(a["constellations"][name]["points"], float)
+        pb = np.array(b["constellations"][name]["points"], float)
+        if len(pa) < 3 or len(pb) < 3:
+            geometric[name] = None
+            continue
+        geometric[name] = register(pa, pb).as_dict()
+
+    return {
+        "identity_distance": vector_distance(a["identity_vector"],
+                                             b["identity_vector"]),
+        "volatile_distance": vector_distance(a["volatile_vector"],
+                                             b["volatile_vector"]),
+        "ratio_distance": vector_distance(a["ratios"], b["ratios"]),
+        "geometric": geometric,
+        "population": a["population"],
+        "warnings": sorted(set(a["warnings"]) | set(b["warnings"])),
+    }
+
+
 # POST /check/presence, /check/authenticity, /check/binding — Steps 5, 6, 7.

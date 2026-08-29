@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help smoke seed capture gate-demo schema setup dev verifier frontend replay benchmark units test clean
+.PHONY: help smoke seed capture gate-demo separation schema setup dev verifier frontend replay benchmark units test clean
 
 help: ## Show this help
 	@echo "STRATUM — make targets"
@@ -29,6 +29,9 @@ capture: ## Run the capture pipeline. IMG=path/to/face.jpg [MODE=auto to record]
 
 gate-demo: ## The Step 3 demo beat — an agent refused at the boundary
 	@cd verifier && .venv/bin/python demo_gate.py
+
+separation: ## The Step 4 measurement — does one face separate from another?
+	@cd verifier && .venv/bin/python separation_report.py
 
 schema: ## Emit the 9-table data model for import into Xano
 	@cd verifier && .venv/bin/python -c \
