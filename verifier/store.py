@@ -59,6 +59,31 @@ class Store:
         r = self.db.execute(f"SELECT * FROM {table} WHERE id = ?", (id_,)).fetchone()
         return dict(r) if r else None
 
+    def gates_in_state(self, state: GateState | str, limit: int = 50) -> list[dict]:
+        """
+        The review queue.
+
+        Ordered oldest first, deliberately. A reviewer working newest-first
+        leaves the oldest gate to expire, and an expired gate is a person who
+        was told to wait and then silently refused.
+        """
+        rows = self.db.execute(
+            "SELECT * FROM gates WHERE state = ? ORDER BY created_at ASC LIMIT ?",
+            (str(GateState(state)), limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def evidence_for(self, gate_id: str) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT * FROM evidence WHERE gate_id = ? ORDER BY check_no ASC",
+            (gate_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def reviews_for(self, gate_id: str) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT * FROM reviews WHERE gate_id = ? ORDER BY created_at ASC",
+            (gate_id,)).fetchall()
+        return [dict(r) for r in rows]
+
     # ── ledger ────────────────────────────────────────────────────────────
     def _head(self, gate_id: str) -> str:
         # rowid, not ts: two events can share a timestamp, and rowid is the

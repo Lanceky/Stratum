@@ -57,6 +57,23 @@ SCORE_WEIGHTS = {"presence": 0.40, "binding": 0.45, "authenticity": 0.15}
 REQUIRED = ("presence", "authenticity", "binding")
 
 
+def _reason_of(payload: dict) -> str:
+    """
+    A check's own words for why it decided what it decided.
+
+    Read from the top level first, then from a nested `detail`. The check
+    endpoints in app.py return `reason` at the top level, so reading only
+    `detail` silently dropped the specific finding and left the reviewer with
+    generic boilerplate — the one field a human actually needs, lost for the
+    exact payload shape this system produces.
+    """
+    top = payload.get("reason")
+    if isinstance(top, str) and top.strip():
+        return top
+    nested = (payload.get("detail") or {}).get("reason", "")
+    return nested if isinstance(nested, str) else ""
+
+
 @dataclass
 class CheckOutcome:
     """
@@ -73,6 +90,7 @@ class CheckOutcome:
     score: float
     verdict: str | None = None      # check 3 reports its own three-way verdict
     reason: str = ""
+    limitations: list[str] = field(default_factory=list)
 
     @classmethod
     def from_result(cls, name: str, payload: dict) -> "CheckOutcome":
@@ -82,13 +100,16 @@ class CheckOutcome:
             passed=bool(payload.get("passed", False)),
             score=float(payload.get("score", 0.0)),
             verdict=payload.get("verdict"),
-            reason=(payload.get("detail") or {}).get("reason", ""),
+            reason=_reason_of(payload),
+            limitations=[str(x) for x in (payload.get("limitations")
+                                          or (payload.get("detail") or {}).get(
+                                              "limitations") or [])],
         )
 
     def as_dict(self) -> dict:
         return {"name": self.name, "ran": self.ran, "passed": self.passed,
                 "score": round(self.score, 4), "verdict": self.verdict,
-                "reason": self.reason}
+                "reason": self.reason, "limitations": self.limitations}
 
 
 @dataclass

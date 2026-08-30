@@ -49,6 +49,9 @@ schema: ## Emit the 9-table data model for import into Xano
 verifier: ## Run the Python verifier sidecar on :8000
 	@cd verifier && .venv/bin/uvicorn app:app --reload --port 8000
 
+review-seed: ## Fill the review queue so the reviewer console has something to show
+	@cd verifier && .venv/bin/python demo_seed.py
+
 frontend: ## Run the Vite dev server (HTTPS — required by Perfect Corp Camera Kit)
 	@cd frontend && npm run dev
 

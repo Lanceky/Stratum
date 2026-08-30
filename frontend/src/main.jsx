@@ -14,7 +14,7 @@ function Home() {
       <p style={{ opacity: 0.7 }}>AI agents can do the work. Only a verified human can sign for it.</p>
       <ul>
         <li><Link to="/gate/demo">Gate</Link> — capture + three checks</li>
-        <li><Link to="/review">Reviewer console</Link> — Nutrient DWS Viewer</li>
+        <li><Link to="/review">Reviewer console</Link> — resolve gates the checks could not settle</li>
         <li><Link to="/verify">Public verifier</Link> — check an attestation</li>
         <li><Link to="/dashboard">Tenant dashboard</Link></li>
       </ul>

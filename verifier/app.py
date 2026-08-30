@@ -12,7 +12,9 @@ of days. See context.md §6.
 
 from __future__ import annotations
 
+import json
 import os
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -23,6 +25,9 @@ from gate import Actor, GateMode, GateState, IllegalTransition
 from store import Store
 
 app = FastAPI(title="STRATUM verifier", version="0.1.0")
+
+VERDICTS = {str(GateState.PASS), str(GateState.REVIEW), str(GateState.FAIL)}
+CHECK_NUMBERS = {"presence": 1, "authenticity": 2, "binding": 3}
 
 # Local store. Xano replaces this as system of record once the instance exists;
 # the transition rules are identical either way, which is the point of keeping
@@ -103,6 +108,198 @@ def transition(gate_id: str, body: TransitionRequest) -> dict:
             "from": str(exc.frm), "to": str(exc.to),
             "actor": str(exc.actor), "reason": exc.reason,
         }) from None
+
+
+class ReviewDecision(BaseModel):
+    """
+    A named person's ruling on a gate the machine could not settle.
+
+    `reviewer_id` is required and has no default. An anonymous review is not a
+    review — the entire purpose of the band is that a person put their name to
+    a decision the evidence did not make for them.
+    """
+
+    reviewer_id: str = Field(min_length=1)
+    decision: Literal["approve", "reject"]
+    notes: str = ""
+
+
+@app.get("/gates")
+def list_gates(state: GateState = GateState.REVIEW, limit: int = 50) -> dict:
+    """
+    The review queue: gates waiting on a human, oldest first.
+
+    Each entry carries the evidence summary a reviewer needs to triage without
+    opening it. Raw captures are deliberately absent — see `/gates/{id}/review`.
+    """
+    gates = store.gates_in_state(state, limit)
+    out = []
+    for gate in gates:
+        evidence = store.evidence_for(gate["id"])
+        reasons = fusion_reasons(gate["id"])
+        out.append({
+            "gate_id": gate["id"],
+            "workflow_id": gate["workflow_id"],
+            "mode": gate["mode"],
+            "state": gate["state"],
+            "created_at": gate["created_at"],
+            "expires_at": gate["expires_at"],
+            "expired": store.is_expired(gate),
+            "checks": [_check_summary(row) for row in evidence],
+            "reasons": reasons,
+            "triggering_signal": _triggering_signal(evidence, reasons),
+        })
+    return {"state": str(state), "count": len(out), "gates": out}
+
+
+def _detail(row: dict) -> dict:
+    raw = row.get("detail")
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+    return raw or {}
+
+
+def _check_summary(row: dict) -> dict:
+    names = {v: k for k, v in CHECK_NUMBERS.items()}
+    d = _detail(row)
+    no = int(row["check_no"])
+    return {"check_no": no, "name": names.get(no, f"check {no}"),
+            "score": float(row["score"]), "ran": bool(d.get("ran", True)),
+            "passed": bool(d.get("passed", False)),
+            "verdict": d.get("verdict"), "reason": d.get("reason", ""),
+            "limitations": d.get("limitations", [])}
+
+
+def fusion_reasons(gate_id: str) -> list[str]:
+    """
+    The reasons fusion gave when it referred this gate, read back out of the
+    audit chain.
+
+    Not recomputed. Recomputing would answer "what would we decide now?" when
+    the reviewer needs "what was decided, and on what basis?" — and if the two
+    ever differed, the recomputed answer would quietly hide the discrepancy.
+    """
+    for event in reversed(store.chain(gate_id)):
+        if event["type"] != "transition":
+            continue
+        payload = _detail({"detail": event.get("payload")})
+        if payload.get("to") not in VERDICTS:
+            continue
+        reasons = payload.get("reasons")
+        if reasons:
+            return [str(r) for r in reasons]
+        # A human rejecting a gate also transitions into a verdict state
+        # (REVIEW -> FAIL) but carries no reasons. Stopping there would hide
+        # why the gate was referred in the first place, so keep looking back
+        # for the transition fusion actually wrote.
+    return []
+
+
+def _triggering_signal(evidence: list[dict], reasons: list[str] | None = None) -> str:
+    """
+    Why this gate needs a person — one line, at the top of the queue.
+
+    A reviewer facing a queue needs to know what to look at before opening
+    anything. Fusion's own words come first because they already rank the
+    findings; the evidence rows are a fallback for gates referred by some
+    other route. Ordered by severity: a check that could not run is a
+    different problem from one that ran and could not decide.
+    """
+    if reasons:
+        return reasons[0]
+    for row in evidence:
+        d = _detail(row)
+        if not d.get("ran", True):
+            return (f"check {row['check_no']} could not run — no evidence, "
+                    f"which is not the same as a negative result")
+    for row in evidence:
+        d = _detail(row)
+        if d.get("verdict") == "REVIEW":
+            return d.get("reason") or f"check {row['check_no']} could not decide"
+    return "no automated check objected; referred for another reason"
+
+
+@app.get("/gates/{gate_id}/review")
+def review_packet(gate_id: str) -> dict:
+    """
+    Everything a reviewer is allowed to see, and nothing else.
+
+    Raw captures, scores-as-images and the constellation coordinates are
+    absent by design (context.md §11.8, privacy commitments). A reviewer
+    resolving "is this a sibling or a bad photograph?" does not need the
+    biometric data to do it — they need the signal that objected, its measured
+    limits, and the history. Handing over the face would create a second copy
+    of the most sensitive thing in the system in the least controlled place.
+    """
+    gate = store.get("gates", gate_id)
+    if gate is None:
+        raise HTTPException(404, "no such gate")
+
+    evidence = store.evidence_for(gate_id)
+    reasons = fusion_reasons(gate_id)
+    chain = store.verify_chain(gate_id).as_dict()
+    return {
+        "gate_id": gate_id,
+        "state": gate["state"],
+        "mode": gate["mode"],
+        "created_at": gate["created_at"],
+        "expires_at": gate["expires_at"],
+        "expired": store.is_expired(gate),
+        "triggering_signal": _triggering_signal(evidence, reasons),
+        "reasons": reasons,
+        "checks": [_check_summary(row) for row in evidence],
+        "timeline": [{"at": e.get("ts"), "type": e["type"],
+                      "payload": _detail({"detail": e.get("payload")})}
+                     for e in store.chain(gate_id)],
+        "chain": chain,
+        "reviews": store.reviews_for(gate_id),
+        "decidable": gate["state"] == str(GateState.REVIEW),
+    }
+
+
+@app.post("/gates/{gate_id}/review")
+def submit_review(gate_id: str, body: ReviewDecision) -> dict:
+    """
+    Record a human ruling, and move the gate accordingly.
+
+    approve -> SIGNED, reject -> FAIL, both as Actor.HUMAN. The transition goes
+    through `gate_transition` like everything else, so a reviewer cannot reach a
+    state an agent could not, and the ruling lands in the same hash chain.
+
+    The transition is attempted *first*, and the review row is written only if
+    it took effect. Writing the row first left the reviews table asserting an
+    approval that had been refused — an expired gate would carry a row reading
+    "approve" that was indistinguishable from one that authorised something.
+    The attempt is not lost by reordering: `gate_transition` records refusals
+    as `transition.refused` in the audit chain, and the reviewer's name is
+    passed in the detail so the refusal says who tried.
+    """
+    gate = store.get("gates", gate_id)
+    if gate is None:
+        raise HTTPException(404, "no such gate")
+
+    # Read the signal before moving the gate: a rejection writes REVIEW -> FAIL,
+    # and asking afterwards would describe the reviewer's own decision rather
+    # than the finding they were asked to rule on.
+    signal = _triggering_signal(store.evidence_for(gate_id),
+                               fusion_reasons(gate_id))
+
+    target = GateState.SIGNED if body.decision == "approve" else GateState.FAIL
+    detail = {"reviewer_id": body.reviewer_id, "decision": body.decision,
+              "notes": body.notes}
+    try:
+        gate = store.gate_transition(gate_id, target, Actor.HUMAN, detail)
+    except IllegalTransition as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    store.add_review(gate_id, body.reviewer_id, body.decision, signal,
+                     body.notes)
+
+    return {"gate_id": gate_id, "state": gate["state"],
+            "decision": body.decision, "reviewer_id": body.reviewer_id}
 
 
 @app.get("/gates/{gate_id}/audit")
@@ -448,6 +645,22 @@ def decide(body: FusionRequest) -> dict:
     if body.gate_id:
         if store.get("gates", body.gate_id) is None:
             raise HTTPException(404, "no such gate")
+
+        # Persist what was fused, not just what was concluded. Without this the
+        # verdict sits in the audit chain with no record of the evidence it
+        # rested on, and a reviewer opening the gate later sees a referral with
+        # no visible cause.
+        already = {int(r["check_no"]) for r in store.evidence_for(body.gate_id)}
+        for outcome in decision["checks"]:
+            no = CHECK_NUMBERS.get(outcome["name"])
+            if no is None or no in already:
+                continue
+            store.add_evidence(body.gate_id, no, outcome["score"], {
+                "ran": outcome["ran"], "passed": outcome["passed"],
+                "verdict": outcome["verdict"], "reason": outcome["reason"],
+                "limitations": outcome.get("limitations", []),
+            })
+
         try:
             gate = store.gate_transition(
                 body.gate_id, decision["verdict"], Actor.SYSTEM,
