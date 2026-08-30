@@ -126,3 +126,68 @@ def cohort(n_people: int = 12, n_captures: int = 3) -> list[list[dict]]:
                             **POSES[c % len(POSES)])
                     for c in range(n_captures)])
     return out
+
+
+# ── the cases the REVIEW band exists for ──────────────────────────────────
+# A two-threshold decision is only honest if the middle band is reachable. These
+# build the situations that put a genuine person there: evidence that is real but
+# not sufficient. None of them is an impostor, and none is a clean match.
+
+def degraded(identity: Identity, seed: int, *, detect_rate: float = 0.30,
+             jitter_scale: float = 3.0, **pose) -> dict:
+    """
+    A genuine capture taken badly: poor light, motion, a partly occluded face.
+
+    Few spots survive detection and those that do are poorly localised, so the
+    strongest channel is left with little to work with. This is the commonest
+    real reason a genuine user cannot be confidently matched, and rejecting it
+    outright would mean rejecting people for holding the phone wrong.
+    """
+    rng = np.random.default_rng(seed)
+    keep = rng.random(len(identity.spots)) < detect_rate
+    pts = identity.spots[keep].copy()
+    pts[:, :2] += rng.normal(0, SPOT_JITTER * IMG_W * jitter_scale, pts[:, :2].shape)
+    pts[:, 2] *= np.exp(rng.normal(0, SIZE_NOISE * 1.5, len(pts)))
+
+    base = capture(identity, seed, **pose)
+    base["constellations"]["hd_pore"] = pts.tolist()
+    base["source"] += "_degraded"
+    return base
+
+
+def changed_appearance(identity: Identity, seed: int, *,
+                       drift: float = 3.0, **pose) -> dict:
+    """
+    The same person, months later: tanned, heavier, older, differently medicated.
+
+    The spot pattern is intact — moles do not rearrange — but the stable skin
+    scores have moved well beyond capture noise. Exactly the case where one
+    channel says yes and another says no, which is what a REVIEW is for.
+    """
+    out = capture(identity, seed, **pose)
+    rng = np.random.default_rng(seed + 7)
+    shift = rng.normal(0, INTRA_NOISE * drift, len(out["scores"]))
+    for (k, v), s in zip(sorted(out["scores"].items()), shift):
+        out["scores"][k] = float(np.clip(v + s, 1, 99))
+    out["source"] += "_changed"
+    return out
+
+
+def sibling(identity: Identity, seed: int, **pose) -> dict:
+    """
+    A close relative: similar face geometry and skin, independent spot pattern.
+
+    Moles form stochastically in development, so even identical twins do not
+    share them. This is the case where the weak channels agree and the strong
+    one does not — the opposite shape of disagreement to `changed_appearance`,
+    and a useful test that fusion is not just reading one channel.
+    """
+    rng = np.random.default_rng(seed + 11)
+    rel = Identity(seed=identity.seed + 500_000)
+    rel.ratios = {k: float(v * (1.0 + rng.normal(0, 0.03)))
+                  for k, v in identity.ratios.items()}
+    rel.stable = {k: float(np.clip(v + rng.normal(0, INTRA_NOISE * 1.5), 1, 99))
+                  for k, v in identity.stable.items()}
+    out = capture(rel, seed, **pose)
+    out["source"] += "_sibling"
+    return out

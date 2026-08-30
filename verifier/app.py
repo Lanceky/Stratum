@@ -137,6 +137,30 @@ class ComparePair(BaseModel):
     b: CaptureBundle
 
 
+class BindingRequest(BaseModel):
+    """
+    Two captures of the same claimed person: the one on file, and the one
+    presented now.
+
+    Named rather than positional because `a`/`b` invites the caller to swap
+    them, and the two are not interchangeable — the enrolment is the reference
+    the probe is measured against.
+    """
+
+    enrolment: CaptureBundle
+    probe: CaptureBundle
+    gate_id: str | None = None
+
+
+class FusionRequest(BaseModel):
+    """Results from checks 1-3, in whatever combination the caller has."""
+
+    presence: dict | None = None
+    authenticity: dict | None = None
+    binding: dict | None = None
+    gate_id: str | None = None
+
+
 @app.post("/verify")
 def verify(bundle: CaptureBundle) -> dict:
     """
@@ -346,4 +370,91 @@ def check_authenticity(body: AuthenticityRequest) -> dict:
     return result
 
 
-# POST /check/binding — Step 7.
+@app.post("/check/binding")
+def check_binding(body: BindingRequest) -> dict:
+    """
+    Is the person signing now the person who enrolled?
+
+    Three channels, fused: where the spots are, the proportions of the face, and
+    the slow-moving skin scores. They are weighted by measured separation rather
+    than evenly, and a channel that cannot be computed is dropped and the rest
+    renormalised — scoring an absent channel as agreement would let a degraded
+    capture manufacture a match.
+
+    Returns three verdicts, not two. A badly-lit genuine capture and a close
+    relative produce overlapping distances, so there is a band where the
+    evidence genuinely does not settle the question. That band goes to a human.
+    """
+    from checks.binding import evaluate
+    from normalise import normalise_bundle
+
+    if not body.enrolment.scores and not body.enrolment.constellations:
+        raise HTTPException(422, "enrolment capture carries no comparable signal")
+    if not body.probe.scores and not body.probe.constellations:
+        raise HTTPException(422, "probe capture carries no comparable signal")
+
+    result = evaluate(
+        normalise_bundle(body.enrolment.model_dump()),
+        normalise_bundle(body.probe.model_dump()),
+    ).as_dict()
+
+    if body.gate_id:
+        if store.get("gates", body.gate_id) is None:
+            raise HTTPException(404, "no such gate")
+        store.add_evidence(body.gate_id, 3, result["score"], {
+            "verdict": result["verdict"],
+            "passed": result["passed"],
+            "distance": result["distance"],
+            "reason": result["reason"],
+            "limitations": result["limitations"],
+            "channels": {c["name"]: {"raw": c["raw"], "z": c["z"],
+                                     "effective_weight": c["effective_weight"],
+                                     "ran": c["ran"]}
+                         for c in result["channels"]},
+        })
+        result["gate_id"] = body.gate_id
+
+    return result
+
+
+@app.post("/decide")
+def decide(body: FusionRequest) -> dict:
+    """
+    Turn three check results into one authorisation decision.
+
+    A conjunction, not an average: every check that ran must be satisfied, and
+    a check that could *not* run sends the gate to REVIEW rather than letting
+    it pass. The score is reported so a queue can be sorted, but it never
+    overrides a check.
+
+    With a `gate_id`, the verdict is written through `gate_transition` — the
+    same choke point every other state change uses. Fusion does not get a
+    private door into `gates.state`, so a decision here is subject to the same
+    legality rules and lands in the same audit chain as everything else.
+    """
+    from fusion import fuse
+
+    results = {name: payload for name, payload in (
+        ("presence", body.presence),
+        ("authenticity", body.authenticity),
+        ("binding", body.binding),
+    ) if payload is not None}
+
+    if not results:
+        raise HTTPException(422, "no check results submitted")
+
+    decision = fuse(results).as_dict()
+
+    if body.gate_id:
+        if store.get("gates", body.gate_id) is None:
+            raise HTTPException(404, "no such gate")
+        try:
+            gate = store.gate_transition(
+                body.gate_id, decision["verdict"], Actor.SYSTEM,
+                {"score": decision["score"], "reasons": decision["reasons"]})
+        except IllegalTransition as exc:
+            raise HTTPException(409, str(exc)) from exc
+        decision["gate_id"] = body.gate_id
+        decision["state"] = gate["state"]
+
+    return decision

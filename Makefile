@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help smoke seed capture gate-demo separation presence authenticity schema setup dev verifier frontend replay benchmark units test clean
+.PHONY: help smoke seed capture gate-demo separation presence authenticity binding schema setup dev verifier frontend replay benchmark units test clean
 
 help: ## Show this help
 	@echo "STRATUM — make targets"
@@ -38,6 +38,9 @@ presence: ## The Step 5 measurement — is a live human in front of the camera?
 
 authenticity: ## The Step 6 measurement — how large a forgery would check 2 see?
 	@cd verifier && .venv/bin/python authenticity_report.py
+
+binding: ## The Step 7 measurement — where the identity check stops being able to tell
+	@cd verifier && .venv/bin/python binding_report.py
 
 schema: ## Emit the 9-table data model for import into Xano
 	@cd verifier && .venv/bin/python -c \
