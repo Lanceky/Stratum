@@ -141,8 +141,10 @@ class Attestation:
 
     gate_id: str
     outcome: str
+    signed: bool
     jurisdiction: Jurisdiction
     risk_tier: RiskTier
+    gate_state: str = ""
     timeline: list[dict] = field(default_factory=list)
     checks: list[dict] = field(default_factory=list)
     reviewer: dict | None = None
@@ -183,6 +185,37 @@ class Attestation:
                 "below may have been altered after the fact, and nothing in "
                 "this document should be relied upon.")
         return out
+
+
+# The states that are a *verdict*. Anything after these describes what was done
+# with the verdict, not what the evidence concluded.
+VERDICT_STATES = ("PASS", "REVIEW", "FAIL")
+
+
+def outcome_of(gate: dict, events: list[dict]) -> str:
+    """
+    Recover the verdict, which is usually no longer the gate's current state.
+
+    The certificate is issued on the signature webhook, by which time the gate
+    has moved to SIGNED and then SEALED. Reading `gate.state` at that point
+    reports "SIGNED" — which is not a verdict at all, and would erase the
+    difference between a clean PASS and a REVIEW a human chose to approve.
+    That distinction is the single most important thing on the document.
+
+    So the verdict is recovered from the audit trail: the last transition into
+    PASS, REVIEW or FAIL. The trail is hash-chained, so this is not a guess — it
+    is the same evidence an auditor would use, read the same way.
+    """
+    state = str(gate.get("state", ""))
+    if state in VERDICT_STATES:
+        return state
+    for event in reversed(events):
+        if event.get("type") != "transition":
+            continue
+        to = _payload(event).get("to")
+        if to in VERDICT_STATES:
+            return str(to)
+    return state
 
 
 def _payload(event: dict) -> dict:
@@ -258,13 +291,15 @@ def build(gate: dict, events: list[dict], evidence: list[dict], *,
 
     return Attestation(
         gate_id=gate.get("id", ""),
-        outcome=str(gate.get("state", "")),
+        outcome=outcome_of(gate, events),
+        signed=str(gate.get("state", "")) in ("SIGNED", "SEALED"),
         jurisdiction=Jurisdiction(jurisdiction),
         risk_tier=RiskTier(risk_tier),
         timeline=timeline,
         checks=checks,
         reviewer=reviewer,
         chain_head=(events[-1].get("hash", "") if events else ""),
+        gate_state=str(gate.get("state", "")),
         chain_intact=chain_intact,
         issued_at=datetime.now(UTC).isoformat(timespec="seconds"),
     )
@@ -299,6 +334,8 @@ def variables(att: Attestation) -> list[dict]:
         "chain_head": att.chain_head,
         "chain_intact": "true" if att.chain_intact else "false",
         "requires_human_review": "true" if att.outcome == "REVIEW" else "false",
+        "signed": "true" if att.signed else "false",
+        "gate_state": str(att.gate_state),
         "reviewer_id": (att.reviewer or {}).get("reviewer_id", ""),
         "reviewer_decision": (att.reviewer or {}).get("decision", ""),
         "reviewer_notes": (att.reviewer or {}).get("notes", ""),

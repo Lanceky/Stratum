@@ -13,7 +13,7 @@ import pytest
 
 from attestation import (CHECK_LIMITS, OUTCOME_STATEMENTS, REGIMES,
                          Attestation, Jurisdiction, RiskTier, build,
-                         generate_request, variables)
+                         generate_request, outcome_of, variables)
 
 
 def gate(state="PASS", gid="gate-0001"):
@@ -238,3 +238,68 @@ def test_reviewer_block_appears_only_with_a_reviewer():
     assert without["show_reviewer_block"] == "false"
     assert with_["show_reviewer_block"] == "true"
     assert with_["reviewer_id"] == "r-1"
+
+
+# ── the verdict survives signing ──────────────────────────────────────────
+def signed_history(verdict="REVIEW"):
+    """A real gate's trail: it reaches a verdict, then a human signs it."""
+    return events() + [
+        {"type": "transition", "ts": "2026-08-30T10:05:00Z", "hash": "e" * 64,
+         "payload": json.dumps({"from": "SCORED", "to": verdict, "actor": "system"})},
+        {"type": "transition", "ts": "2026-08-30T10:06:00Z", "hash": "f" * 64,
+         "payload": json.dumps({"from": verdict, "to": "SIGNED", "actor": "human"})},
+    ]
+
+
+def test_verdict_is_recovered_after_signing():
+    """
+    The certificate is issued on the signature webhook, so the gate reads
+    SIGNED by then. Reporting that as the outcome erases the verdict.
+    """
+    att = build(gate("SIGNED"), signed_history("REVIEW"), evidence())
+    assert att.outcome == "REVIEW"
+
+
+def test_a_signed_review_does_not_become_a_pass():
+    """The difference between a clean pass and an approved referral is the point."""
+    s = scalars(build(gate("SIGNED"), signed_history("REVIEW"), evidence()))
+    assert s["outcome"] == "REVIEW"
+    assert s["requires_human_review"] == "true"
+
+
+def test_a_signed_pass_is_still_a_pass():
+    assert build(gate("SIGNED"), signed_history("PASS"), evidence()).outcome == "PASS"
+
+
+def test_sealed_gate_also_recovers_its_verdict():
+    ev = signed_history("PASS") + [
+        {"type": "transition", "ts": "2026-08-30T10:07:00Z", "hash": "g" * 64,
+         "payload": json.dumps({"from": "SIGNED", "to": "SEALED", "actor": "system"})}]
+    assert build(gate("SEALED"), ev, evidence()).outcome == "PASS"
+
+
+def test_the_latest_verdict_wins():
+    """A gate reviewed then failed by a human must report the failure."""
+    ev = events() + [
+        {"type": "transition", "ts": "t1", "hash": "e" * 64,
+         "payload": json.dumps({"from": "SCORED", "to": "REVIEW", "actor": "system"})},
+        {"type": "transition", "ts": "t2", "hash": "f" * 64,
+         "payload": json.dumps({"from": "REVIEW", "to": "FAIL", "actor": "human"})}]
+    assert build(gate("FAIL"), ev, evidence()).outcome == "FAIL"
+
+
+def test_signing_is_recorded_separately_from_the_verdict():
+    s = scalars(build(gate("SIGNED"), signed_history("PASS"), evidence()))
+    assert s["signed"] == "true" and s["gate_state"] == "SIGNED"
+
+
+def test_unsigned_gate_is_not_marked_signed():
+    assert scalars(build(gate("REVIEW"), events(), evidence()))["signed"] == "false"
+
+
+def test_current_verdict_state_is_used_directly():
+    assert outcome_of({"state": "PASS"}, []) == "PASS"
+
+
+def test_gate_with_no_verdict_in_its_history_is_not_invented():
+    assert outcome_of({"state": "CAPTURED"}, events()) == "CAPTURED"
