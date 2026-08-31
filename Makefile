@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help smoke seed capture gate-demo separation presence authenticity binding schema setup dev verifier frontend replay benchmark units test clean
+.PHONY: help smoke seed capture gate-demo separation presence authenticity binding schema setup dev verifier frontend replay review-seed benchmark units test clean
 
 help: ## Show this help
 	@echo "STRATUM — make targets"
@@ -47,7 +47,8 @@ schema: ## Emit the 9-table data model for import into Xano
 		"import json,schema; print(json.dumps(schema.xano_export(), indent=2))"
 
 verifier: ## Run the Python verifier sidecar on :8000
-	@cd verifier && .venv/bin/uvicorn app:app --reload --port 8000
+	@cd verifier && STRATUM_DEMO_TAMPER=$${STRATUM_DEMO_TAMPER:-1} \
+		.venv/bin/uvicorn app:app --reload --port 8000
 
 review-seed: ## Fill the review queue so the reviewer console has something to show
 	@cd verifier && .venv/bin/python demo_seed.py
