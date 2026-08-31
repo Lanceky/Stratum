@@ -93,7 +93,8 @@ def generic_key(op: str) -> str:
     return f"{op}__{GENERIC_KEY}"
 
 
-def resolve(op: str, payload: Any, *, synthetic_ok: bool = True) -> Path | None:
+def resolve(op: str, payload: Any, *, synthetic_ok: bool = True,
+            ext: str = ".json") -> Path | None:
     """
     Recorded fixture if one exists, else the synthetic stand-in, else None.
 
@@ -101,8 +102,14 @@ def resolve(op: str, payload: Any, *, synthetic_ok: bool = True) -> Path | None:
     stops `auto` mode treating a placeholder as something it already has and
     never calling the real API — which would quietly turn a benchmark that
     claims to be measured into one made of stand-ins.
+
+    `ext` selects the on-disk form. Not every API answers in JSON: Nutrient's
+    /build returns a PDF, and a PDF belongs on disk as a PDF that a reviewer
+    can open and read, not as base64 buried in a JSON envelope. The precedence
+    rules above are the part that must not be duplicated per format, so the
+    extension is a parameter rather than a second copy of this function.
     """
-    name = f"{fixture_key(op, payload)}.json"
+    name = f"{fixture_key(op, payload)}{ext}"
     roots = (FIXTURE_DIR, SYNTHETIC_DIR) if synthetic_ok else (FIXTURE_DIR,)
     for d in roots:
         candidate = d / name
@@ -113,7 +120,7 @@ def resolve(op: str, payload: Any, *, synthetic_ok: bool = True) -> Path | None:
     # depend on the payload. `auto` mode asks with synthetic_ok=False, so it
     # never sees this and still goes out to record the real thing.
     if synthetic_ok and op in CONTENT_INDEPENDENT:
-        generic = SYNTHETIC_DIR / f"{generic_key(op)}.json"
+        generic = SYNTHETIC_DIR / f"{generic_key(op)}{ext}"
         if generic.exists():
             return generic
     return None
@@ -187,6 +194,45 @@ def call(op: str, payload: Any, live_fn: Callable[[], Any]) -> Any:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     (FIXTURE_DIR / f"{fixture_key(op, payload)}.json").write_text(
         json.dumps(resp, indent=2, default=str))
+    return resp
+
+
+def call_binary(op: str, payload: Any, live_fn: Callable[[], bytes], *,
+                ext: str = ".bin") -> bytes:
+    """
+    Record/replay for an API that answers with bytes rather than JSON.
+
+    Nutrient's /build returns a finished PDF. Squeezing that through `call`
+    would mean base64 inside a JSON envelope, which defeats the one property
+    that makes a fixture tree worth having: you can open the recorded response
+    and see for yourself what the API actually said. A recorded attestation
+    should be a PDF you can read.
+
+    The mode rules are deliberately identical to `call` — replay never goes
+    out, auto ignores synthetic stand-ins so it still records real data, live
+    always goes out. They are stated twice because the two functions store
+    different things, so if these ever disagree it is a bug in this file and
+    not a policy difference.
+
+    No unit accounting. `UNIT_COST` tracks Perfect Corp's metered grant, and
+    charging a Nutrient call against that ceiling would let document work
+    exhaust the budget guarding the sensor — two unrelated quotas sharing one
+    counter, where the sensor is the one that cannot be topped up.
+    """
+    if MODE == "replay":
+        found = resolve(op, payload, ext=ext)
+        if found is None:
+            raise FixtureMissing(op, fixture_key(op, payload))
+        return found.read_bytes()
+
+    if MODE == "auto":
+        recorded = resolve(op, payload, synthetic_ok=False, ext=ext)
+        if recorded is not None:
+            return recorded.read_bytes()
+
+    resp = live_fn()
+    FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
+    (FIXTURE_DIR / f"{fixture_key(op, payload)}{ext}").write_bytes(resp)
     return resp
 
 
