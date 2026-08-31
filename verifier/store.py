@@ -15,6 +15,7 @@ rejected attempt by an agent to sign is itself permanent evidence.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -23,7 +24,8 @@ from typing import Any
 
 import ledger
 import schema
-from gate import Actor, GateMode, GateState, IllegalTransition, check
+from gate import (Actor, GateMode, GateState, IllegalTransition, check,
+                  is_escalation)
 
 DEFAULT_TTL_S = 300
 
@@ -113,6 +115,25 @@ class Store:
 
     def verify_chain(self, gate_id: str) -> ledger.ChainResult:
         return ledger.verify_chain(self.chain(gate_id))
+
+    def escalations(self, gate_id: str) -> list[dict]:
+        """
+        Every time a non-human reached for a step only a human may take.
+
+        Read back out of the chain rather than tracked in a column of its own,
+        because the chain is the record. A separate counter could disagree with
+        it, and if the two ever differed there would be no way to say which was
+        lying.
+        """
+        out = []
+        for e in self.chain(gate_id):
+            if e["type"] != "transition.refused":
+                continue
+            payload = json.loads(e["payload"]) if e["payload"] else {}
+            if not is_escalation(payload.get("to"), payload.get("actor")):
+                continue
+            out.append({"at": e["ts"], "hash": e["hash"], **payload})
+        return out
 
     # ── gates ─────────────────────────────────────────────────────────────
     def create_gate(self, workflow_id: str, mode: GateMode | str,

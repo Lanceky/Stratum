@@ -104,9 +104,27 @@ def test_challenge_by_gate_id_never_returns_the_nonce(client):
     assert "nonce" not in json.dumps(spec)
 
 
-def test_challenge_moves_the_gate_and_refuses_a_second_issue(client):
-    gate_id, _ = challenged_gate(client)
+def test_reissuing_a_challenge_is_idempotent(client):
+    """
+    The spec is derived from the nonce, so a second issue returns the same
+    thing and discloses nothing new. Refusing it meant a page refresh during
+    capture locked the person out of their own gate permanently.
+    """
+    gate_id, first = challenged_gate(client)
     assert client.get(f"/gates/{gate_id}").json()["state"] == str(GateState.CHALLENGED)
+
+    again = client.post("/challenge", json={"gate_id": gate_id})
+    assert again.status_code == 200
+    assert again.json()["frames"] == first["frames"]
+
+
+def test_a_captured_gate_cannot_be_handed_a_fresh_challenge(client):
+    """
+    The property that actually matters. Idempotency stops at CHALLENGED; past
+    it, a new challenge would let a completed capture be re-answered.
+    """
+    gate_id, spec = challenged_gate(client)
+    post_capture(client, gate_id, spec)
 
     again = client.post("/challenge", json={"gate_id": gate_id})
     assert again.status_code == 409

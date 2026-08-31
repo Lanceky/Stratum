@@ -324,6 +324,10 @@ def list_gates(state: GateState = GateState.REVIEW, limit: int = 50) -> dict:
             "checks": [_check_summary(row) for row in evidence],
             "reasons": reasons,
             "triggering_signal": _triggering_signal(evidence, reasons),
+            # A count, not the events: enough to make the queue entry stand out
+            # and force the reviewer to open it, without putting the detail
+            # somewhere it can be skimmed past.
+            "escalations": len(store.escalations(gate["id"])),
         })
     return {"state": str(state), "count": len(out), "gates": out}
 
@@ -436,6 +440,11 @@ def review_packet(gate_id: str) -> dict:
                      for e in store.chain(gate_id)],
         "chain": chain,
         "reviews": store.reviews_for(gate_id),
+        # Every time a non-human reached for a step only a human may take.
+        # Promoted out of the timeline: a reviewer scanning thirty rows of
+        # ordinary state changes should not have to spot this one for
+        # themselves, and it changes what the ruling means.
+        "escalations": store.escalations(gate_id),
         "decidable": gate["state"] == str(GateState.REVIEW),
     }
 
@@ -670,15 +679,24 @@ def issue_challenge(body: ChallengeRequest) -> dict:
         raise HTTPException(422, str(exc)) from exc
 
     if gate is not None:
-        try:
-            gate = store.gate_transition(
-                body.gate_id, GateState.CHALLENGED, Actor.SYSTEM,
-                {"n_frames": len(spec["frames"])})
-        except IllegalTransition as exc:
-            raise HTTPException(409, {
-                "error": "illegal_transition", "from": str(exc.frm),
-                "to": str(exc.to), "reason": exc.reason,
-            }) from None
+        # Re-issuing on a gate that is already CHALLENGED is idempotent, not an
+        # error. The spec is derived from the nonce and is therefore identical,
+        # so nothing new is disclosed — and refusing it meant a page refresh
+        # during capture locked the person out of their own gate for good.
+        #
+        # Everything past CHALLENGED is still refused by the state machine: a
+        # gate that has been captured cannot be handed a fresh challenge, which
+        # is the property that actually matters.
+        if gate["state"] != str(GateState.CHALLENGED):
+            try:
+                gate = store.gate_transition(
+                    body.gate_id, GateState.CHALLENGED, Actor.SYSTEM,
+                    {"n_frames": len(spec["frames"])})
+            except IllegalTransition as exc:
+                raise HTTPException(409, {
+                    "error": "illegal_transition", "from": str(exc.frm),
+                    "to": str(exc.to), "reason": exc.reason,
+                }) from None
         spec["gate_id"] = body.gate_id
         spec["expires_at"] = gate["expires_at"]
 
