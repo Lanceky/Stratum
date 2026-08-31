@@ -36,6 +36,37 @@ def test_replay_never_calls_out(monkeypatch, tmp_path):
         fixtures.call("skin-analysis-hd", {"a": 1}, must_not_run)
 
 
+def _missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(fixtures, "MODE", "replay")
+    monkeypatch.setattr(fixtures, "FIXTURE_DIR", tmp_path)
+    monkeypatch.setattr(fixtures, "SYNTHETIC_DIR", tmp_path / "synthetic")
+    with pytest.raises(fixtures.FixtureMissing) as e:
+        fixtures.call("skin-analysis-hd", {"a": 1}, lambda: None)
+    return e.value
+
+
+def test_a_missing_fixture_separates_the_cause_from_the_remedy(monkeypatch,
+                                                               tmp_path):
+    exc = _missing(monkeypatch, tmp_path)
+    assert "make seed" not in exc.cause
+    assert "make seed" in exc.remedy
+
+
+def test_the_cause_still_says_which_call_had_no_recording(monkeypatch, tmp_path):
+    assert "skin-analysis-hd" in _missing(monkeypatch, tmp_path).cause
+
+
+def test_the_full_message_keeps_the_remedy_for_a_terminal(monkeypatch, tmp_path):
+    exc = _missing(monkeypatch, tmp_path)
+    assert exc.cause in str(exc) and exc.remedy in str(exc)
+
+
+def test_it_is_still_a_file_not_found_error(monkeypatch, tmp_path):
+    # Callers catch FileNotFoundError. Narrowing the type here would route a
+    # missing recording somewhere it has never been routed before.
+    assert isinstance(_missing(monkeypatch, tmp_path), FileNotFoundError)
+
+
 def _seed(d: Path, op: str, payload: dict, body: dict) -> None:
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{fixtures.fixture_key(op, payload)}.json").write_text(json.dumps(body))

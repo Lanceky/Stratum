@@ -430,3 +430,27 @@ def test_the_challenge_is_rederived_from_the_gates_nonce(client, monkeypatch):
     expected = [f.colour.name for f in ch.derive(gate["nonce"]).frames]
     assert seen["colours"] == expected, "the capture was scored against another spec"
     assert [f["colour"] for f in spec["frames"]] == expected
+
+
+def test_a_reviewer_is_not_shown_the_developer_runbook(client):
+    """
+    The sentence explaining why a check could not run is read by someone
+    deciding whether to authorise a payment. `make seed` is not actionable
+    for them, and a console that mixes the two teaches reviewers that the
+    reason field is noise.
+    """
+    gate_id, spec = challenged_gate(client)
+    body = post_capture(client, gate_id, spec).json()
+    reason = next(c for c in body["checks"] if c["name"] == "presence")["reason"]
+    assert "could not be reached" in reason
+    assert "make seed" not in reason
+    assert "STRATUM_API_MODE" not in reason
+
+
+def test_the_reason_still_names_what_failed(client):
+    gate_id, spec = challenged_gate(client)
+    body = post_capture(client, gate_id, spec).json()
+    reason = next(c for c in body["checks"] if c["name"] == "presence")["reason"]
+    # Without the cause a reviewer cannot tell a lapsed credential from
+    # somebody holding the sensor down on purpose.
+    assert "FixtureMissing" in reason or "no recorded response" in reason

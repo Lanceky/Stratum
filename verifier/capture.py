@@ -67,7 +67,13 @@ def analyse(data: bytes, name: str, *, hd: bool = True,
         mask_paths = pc.download_masks(skin, dest)
     except (FileNotFoundError, pc.PerfectCorpError, UnitBudgetExceeded,
             OSError, KeyError) as exc:
-        raise SensorUnavailable(f"{type(exc).__name__}: {exc}") from exc
+        # `cause` where the exception offers one, so the sentence a reviewer
+        # reads names what went wrong without the runbook aimed at whoever
+        # deploys this. The exception type is kept either way: "which sensor
+        # failed and how" is the difference between a lapsed credential and
+        # somebody holding the API down while they try something.
+        detail = getattr(exc, "cause", None) or str(exc)
+        raise SensorUnavailable(f"{type(exc).__name__}: {detail}") from exc
 
     constellations = {}
     for concern, path in mask_paths.items():

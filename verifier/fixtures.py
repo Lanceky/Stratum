@@ -93,6 +93,30 @@ def is_synthetic(path: Path) -> bool:
     return SYNTHETIC_DIR in path.parents
 
 
+class FixtureMissing(FileNotFoundError):
+    """
+    Replay mode was asked for a call that has never been recorded.
+
+    Carries the cause and the remedy apart, because they are read by different
+    people. The cause — this call has no recorded response — belongs in the
+    reviewer's console, where it explains why a check could not run. The
+    remedy is a developer instruction; an auditor cannot act on `make seed`,
+    and should not be reading it while deciding whether to authorise a
+    payment.
+
+    Still a FileNotFoundError, so existing callers that catch that keep
+    working. `str()` gives both halves, which is what a terminal wants.
+    """
+
+    def __init__(self, op: str, key: str):
+        self.op = op
+        self.key = key
+        self.cause = f"no recorded response for {op}"
+        self.remedy = (f"Run `make seed`, or record with "
+                       f"STRATUM_API_MODE=auto (key {key}).")
+        super().__init__(f"{self.cause} — {self.remedy}")
+
+
 def call(op: str, payload: Any, live_fn: Callable[[], Any]) -> Any:
     """
     Return a recorded response if we have one; otherwise call the real API,
@@ -110,10 +134,7 @@ def call(op: str, payload: Any, live_fn: Callable[[], Any]) -> Any:
     if MODE == "replay":
         found = resolve(op, payload)
         if found is None:
-            raise FileNotFoundError(
-                f"No fixture for {op} ({fixture_key(op, payload)}). "
-                f"Run `make seed`, or record with STRATUM_API_MODE=auto."
-            )
+            raise FixtureMissing(op, fixture_key(op, payload))
         return json.loads(found.read_text())
 
     if MODE == "auto":
