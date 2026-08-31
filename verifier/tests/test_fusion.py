@@ -255,3 +255,85 @@ def test_an_absent_check_keeps_the_could_not_run_framing():
     binding = next(r for r in d.reasons if r.startswith("binding"))
     assert "could not run" in binding
     assert "no enrolled reference capture exists" in binding
+
+
+# ── a stand-in is not evidence ────────────────────────────────────────────
+
+def synthetic(**kw):
+    return {**result(**kw), "synthetic": True}
+
+
+def test_a_stand_in_cannot_reach_pass():
+    """
+    The checks measure what they are handed. Handed a seeded face, presence
+    returns a real number about a fabricated person, and a PASS on that is a
+    gate signed on evidence nobody produced.
+    """
+    d = fuse({**all_good(), "presence": synthetic(passed=True, score=0.95)})
+    assert d.verdict == REVIEW
+    assert d.requires_human is True
+
+
+def test_a_stand_in_cannot_reach_fail_either():
+    """
+    The direction that is easy to miss. Failing on a placeholder tells a live
+    human they flunked a liveness check that never looked at them, and being
+    wrong in the cautious direction does not make it true.
+    """
+    d = fuse({**all_good(), "presence": synthetic(passed=False, score=0.0)})
+    assert d.verdict == REVIEW
+
+
+def test_the_reason_says_the_result_is_about_a_fixture():
+    d = fuse({**all_good(), "presence": synthetic(passed=False)})
+    reason = next(r for r in d.reasons if r.startswith("presence"))
+    assert "stand-in" in reason
+    assert "not about the person" in reason
+
+
+def test_a_real_violation_still_fails_alongside_a_stand_in():
+    """
+    A stand-in elsewhere must not launder a check that genuinely ran and was
+    violated — that would make marking evidence synthetic a way to escape a
+    finding.
+    """
+    d = fuse({**all_good(),
+              "presence": synthetic(passed=True),
+              "binding": result(ran=True, passed=False, verdict=FAIL,
+                                reason="the faces did not match")})
+    assert d.verdict == FAIL
+    assert any("did not match" in r for r in d.reasons)
+
+
+def test_a_fail_still_discloses_which_evidence_was_fabricated():
+    d = fuse({**all_good(),
+              "presence": synthetic(passed=True),
+              "binding": result(ran=True, passed=False, verdict=FAIL,
+                                reason="the faces did not match")})
+    assert any("stand-in" in r for r in d.reasons)
+
+
+def test_the_violation_is_reported_before_the_stand_in():
+    d = fuse({**all_good(),
+              "presence": synthetic(passed=True),
+              "binding": result(ran=True, passed=False, verdict=FAIL,
+                                reason="the faces did not match")})
+    assert "did not match" in d.reasons[0]
+
+
+def test_an_absent_check_is_not_also_called_a_stand_in():
+    """
+    A check that never ran cannot have run against anything. Reporting both
+    would give a reviewer two sentences for one fact.
+    """
+    d = fuse({**all_good(),
+              "authenticity": {**result(ran=False, passed=False,
+                                        reason="SD capture"), "synthetic": True}})
+    authenticity = [r for r in d.reasons if r.startswith("authenticity")]
+    assert len(authenticity) == 1
+    assert "could not run" in authenticity[0]
+
+
+def test_an_unmarked_result_is_not_treated_as_a_stand_in():
+    """The flag has to be set; absence of it means measured."""
+    assert fuse(all_good()).verdict == PASS

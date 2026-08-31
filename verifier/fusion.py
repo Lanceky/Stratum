@@ -26,6 +26,12 @@ that could not run has produced no evidence, and treating that as a pass turns
 every capture degradation into a bypass: ask for SD analysis and check 2 vanishes
 silently. So an absent check sends the gate to REVIEW, never to PASS.
 
+The same holds one step further out. A check that ran against a seeded stand-in
+produced real numbers about a fabricated face, and those are not evidence about
+the person at the camera. Such a result reaches neither PASS nor FAIL — passing
+on a placeholder is the obvious hazard, but failing on one accuses a live human
+of flunking a check that never looked at them.
+
 REVIEW is a first-class outcome. Both failure directions cost real money and
 they are not symmetric — wrongly blocking a signer stalls a transaction, wrongly
 passing a fraudster moves the money — so the cases that the evidence does not
@@ -91,6 +97,7 @@ class CheckOutcome:
     verdict: str | None = None      # check 3 reports its own three-way verdict
     reason: str = ""
     limitations: list[str] = field(default_factory=list)
+    synthetic: bool = False
 
     @classmethod
     def from_result(cls, name: str, payload: dict) -> "CheckOutcome":
@@ -104,12 +111,14 @@ class CheckOutcome:
             limitations=[str(x) for x in (payload.get("limitations")
                                           or (payload.get("detail") or {}).get(
                                               "limitations") or [])],
+            synthetic=bool(payload.get("synthetic")),
         )
 
     def as_dict(self) -> dict:
         return {"name": self.name, "ran": self.ran, "passed": self.passed,
                 "score": round(self.score, 4), "verdict": self.verdict,
-                "reason": self.reason, "limitations": self.limitations}
+                "reason": self.reason, "limitations": self.limitations,
+                "synthetic": self.synthetic}
 
 
 @dataclass
@@ -165,8 +174,17 @@ def fuse(results: dict[str, dict]) -> Decision:
     by_name = {o.name: o for o in outcomes}
     reasons: list[str] = []
 
+    # A check that ran on a seeded stand-in rather than on the sensor. It is
+    # not absent — it produced real numbers, and they are real numbers about a
+    # fabricated face. Pulled out before anything else because such a result
+    # must reach neither PASS nor FAIL: passing on a placeholder is the
+    # obvious hazard, but failing on one accuses the person at the camera of
+    # flunking a check that never looked at them, and this system does not get
+    # to call that a safe direction.
+    standins = [o for o in outcomes if o.ran and o.synthetic]
+
     violated = [o for o in outcomes if o.ran and not o.passed
-                and o.verdict != REVIEW]
+                and o.verdict != REVIEW and not o.synthetic]
     for o in violated:
         reasons.append(f"{o.name}: {o.reason or 'check ran and was not satisfied'}")
 
@@ -175,10 +193,19 @@ def fuse(results: dict[str, dict]) -> Decision:
     # A check that did not run is already accounted for above. Without this it
     # lands in both lists and is reported twice — once as boilerplate and once
     # with the finding that actually matters, which trains a reviewer to skim.
-    unsettled = [o for o in outcomes if o.verdict == REVIEW and o.ran]
+    unsettled = [o for o in outcomes if o.verdict == REVIEW and o.ran
+                 and not o.synthetic]
+
+    def standin_reasons() -> list[str]:
+        return [f"{o.name}: ran against a seeded stand-in, not the sensor, so "
+                f"its result is evidence about a fixture and not about the "
+                f"person at the camera" for o in standins]
 
     if violated:
-        return Decision(FAIL, outcomes, reasons)
+        # Reported after the violation, not instead of it: the violated check
+        # is the finding, but a reviewer upholding it should know which part
+        # of the evidence was fabricated.
+        return Decision(FAIL, outcomes, reasons + standin_reasons())
 
     # Everything below lands on REVIEW. Missing, absent and unsettled are peers
     # at that level, so all three are reported rather than the first one found:
@@ -200,6 +227,7 @@ def fuse(results: dict[str, dict]) -> Decision:
             f"{o.name}: could not run, so it produced no evidence. Absence of "
             f"evidence is not evidence of absence, and a check that did not "
             f"look cannot stand in for one that looked and was satisfied")
+    reasons.extend(standin_reasons())
     for o in unsettled:
         reasons.append(f"{o.name}: {o.reason or 'evidence does not settle the question'}")
 
@@ -208,7 +236,7 @@ def fuse(results: dict[str, dict]) -> Decision:
             f"no result submitted for {', '.join(missing)} — a gate cannot pass "
             f"on checks that were never attempted")
 
-    if missing or absent or unsettled:
+    if missing or absent or unsettled or standins:
         return Decision(REVIEW, outcomes, reasons)
 
     return Decision(PASS, outcomes, ["every check ran and was satisfied"])

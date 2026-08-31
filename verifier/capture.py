@@ -85,6 +85,7 @@ def analyse(data: bytes, name: str, *, hd: bool = True,
         "constellations": constellations,
         "pc_task_id": skin.task_id,
         "hd": hd,
+        "synthetic": skin.synthetic,
     }
 
 
@@ -102,4 +103,5 @@ def frame_record(derived: dict, index: int, captured_at: float) -> dict:
         "captured_at": captured_at,
         "scores": derived.get("scores", {}),
         "constellations": derived.get("constellations", {}),
+        "synthetic": bool(derived.get("synthetic")),
     }

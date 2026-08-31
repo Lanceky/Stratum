@@ -102,6 +102,19 @@ class SkinAnalysisResult:
         return (self.raw.get("data", {}).get("results") or {}).get("output") or []
 
     @property
+    def synthetic(self) -> bool:
+        """
+        True when this result came from a seeded stand-in, not the sensor.
+
+        `seed_fixtures.py` stamps every placeholder with `_synthetic`, but
+        until now nothing read it, so a fabricated face produced eleven
+        plausible scores that entered the checks indistinguishably from
+        measured ones. Surfaced here so the decision layer can refuse to let a
+        stand-in reach PASS.
+        """
+        return bool(self.raw.get("_synthetic"))
+
+    @property
     def scores(self) -> dict[str, float]:
         """
         Flatten to {concern: score}. Per-region entries are keyed
