@@ -25,7 +25,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fixtures import SYNTHETIC_DIR, fixture_key  # noqa: E402
+from fixtures import SYNTHETIC_DIR, fixture_key, generic_key  # noqa: E402
 from perfectcorp import HD_FORENSIC_SET, SD_DST_ACTIONS  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -203,6 +203,21 @@ def main() -> None:
                            "headers": {"Content-Type": "image/jpeg",
                                        "Content-Length": str(size)}}],
          }]}})
+
+    # The same stand-in under a key that does not name a file, because an
+    # upload slot is not a function of the image. Without it a browser capture
+    # sending `frame_0.jpg` misses at step 1 and the whole pipeline reports a
+    # dead sensor, when what actually happened is that nobody seeded a fixture
+    # for that exact filename and byte count.
+    (SYNTHETIC_DIR / f"{generic_key('file-upload')}.json").write_text(
+        json.dumps({"_synthetic": True, "status": 200,
+                    "data": {"files": [{
+                        "content_type": "image/jpeg", "file_id": FILE_ID,
+                        "requests": [{"method": "PUT",
+                                      "url": "https://example.invalid/upload",
+                                      "headers": {"Content-Type": "image/jpeg"}}],
+                    }]}}, indent=2))
+    written += 1
 
     for hd, actions, seed in ((True, HD_FORENSIC_SET, 11), (False, SD_DST_ACTIONS, 22)):
         put("skin-analysis-hd" if hd else "skin-analysis-sd",

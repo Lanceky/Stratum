@@ -188,3 +188,89 @@ def test_units_are_charged_even_when_the_call_fails(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         fx.call("skin-analysis-hd", {"a": 1}, boom)
     assert fx._spent() == fx.UNIT_COST["skin-analysis-hd"]
+
+
+# ── content-independent operations ────────────────────────────────────────
+
+def _upload_payload(name: str, size: int) -> dict:
+    return {"files": [{"content_type": "image/jpeg",
+                       "file_name": name, "file_size": size}]}
+
+
+def test_an_upload_slot_resolves_whatever_the_file_is_called(monkeypatch, tmp_path):
+    """
+    The bug this exists to stop: the same bytes resolved as
+    `synthetic_face.jpg` and missed as `frame_0.jpg`, so every browser capture
+    reported a dead sensor when the analysis fixture behind it would have hit.
+    """
+    monkeypatch.setattr(fixtures, "MODE", "replay")
+    monkeypatch.setattr(fixtures, "FIXTURE_DIR", tmp_path)
+    monkeypatch.setattr(fixtures, "SYNTHETIC_DIR", tmp_path / "synthetic")
+    (tmp_path / "synthetic").mkdir(parents=True)
+    (tmp_path / "synthetic" / f"{fixtures.generic_key('file-upload')}.json").write_text(
+        json.dumps({"_synthetic": True, "data": {"files": [{"file_id": "F"}]}}))
+
+    for name, size in (("frame_0.jpg", 91), ("anything.png", 4), ("x", 0)):
+        got = fixtures.call("file-upload", _upload_payload(name, size), lambda: None)
+        assert got["data"]["files"][0]["file_id"] == "F"
+
+
+def test_the_generic_stand_in_is_marked_synthetic(monkeypatch, tmp_path):
+    """Otherwise it would enter the checks as though it were measured."""
+    monkeypatch.setattr(fixtures, "MODE", "replay")
+    monkeypatch.setattr(fixtures, "FIXTURE_DIR", tmp_path)
+    monkeypatch.setattr(fixtures, "SYNTHETIC_DIR", tmp_path / "synthetic")
+    (tmp_path / "synthetic").mkdir(parents=True)
+    (tmp_path / "synthetic" / f"{fixtures.generic_key('file-upload')}.json").write_text(
+        json.dumps({"_synthetic": True, "data": {"files": [{"file_id": "F"}]}}))
+
+    got = fixtures.call("file-upload", _upload_payload("a.jpg", 1), lambda: None)
+    assert got["_synthetic"] is True
+
+
+def test_analysis_has_no_generic_stand_in(monkeypatch, tmp_path):
+    """
+    The load-bearing half. A skin analysis *is* a function of the image, so
+    serving a generic one would hand back a reading of a face nobody looked
+    at — which is the failure the upload fallback must not be generalised into.
+    """
+    assert "skin-analysis-hd" not in fixtures.CONTENT_INDEPENDENT
+    monkeypatch.setattr(fixtures, "MODE", "replay")
+    monkeypatch.setattr(fixtures, "FIXTURE_DIR", tmp_path)
+    monkeypatch.setattr(fixtures, "SYNTHETIC_DIR", tmp_path / "synthetic")
+    (tmp_path / "synthetic").mkdir(parents=True)
+    (tmp_path / "synthetic" / f"{fixtures.generic_key('skin-analysis-hd')}.json").write_text(
+        json.dumps({"_synthetic": True}))
+
+    with pytest.raises(fixtures.FixtureMissing):
+        fixtures.call("skin-analysis-hd", {"src_file_id": "F"}, lambda: None)
+
+
+def test_auto_mode_never_settles_for_the_generic_stand_in(monkeypatch, tmp_path):
+    """
+    `auto` exists to obtain real recordings. If a generic placeholder counted
+    as a hit, the live call would never happen and the recording would never
+    appear — the same trap `synthetic_ok=False` already guards for exact keys.
+    """
+    monkeypatch.setattr(fixtures, "FIXTURE_DIR", tmp_path)
+    monkeypatch.setattr(fixtures, "SYNTHETIC_DIR", tmp_path / "synthetic")
+    (tmp_path / "synthetic").mkdir(parents=True)
+    (tmp_path / "synthetic" / f"{fixtures.generic_key('file-upload')}.json").write_text(
+        json.dumps({"_synthetic": True, "data": {}}))
+
+    assert fixtures.resolve("file-upload", _upload_payload("a.jpg", 1),
+                            synthetic_ok=False) is None
+
+
+def test_a_recorded_fixture_still_beats_the_generic_stand_in(monkeypatch, tmp_path):
+    monkeypatch.setattr(fixtures, "MODE", "replay")
+    monkeypatch.setattr(fixtures, "FIXTURE_DIR", tmp_path)
+    monkeypatch.setattr(fixtures, "SYNTHETIC_DIR", tmp_path / "synthetic")
+    (tmp_path / "synthetic").mkdir(parents=True)
+    (tmp_path / "synthetic" / f"{fixtures.generic_key('file-upload')}.json").write_text(
+        json.dumps({"data": {"files": [{"file_id": "GENERIC"}]}}))
+    payload = _upload_payload("a.jpg", 1)
+    _seed(tmp_path, "file-upload", payload, {"data": {"files": [{"file_id": "REAL"}]}})
+
+    got = fixtures.call("file-upload", payload, lambda: None)
+    assert got["data"]["files"][0]["file_id"] == "REAL"

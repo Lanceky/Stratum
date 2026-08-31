@@ -66,9 +66,31 @@ def _record_units(op: str, units: int) -> None:
 
 
 def fixture_key(op: str, payload: Any) -> str:
-    """Stable key from operation + payload, so identical calls hit the same file."""
+    """Stable key from operation + payload, so identical calls hit the same key."""
     blob = json.dumps(payload, sort_keys=True, default=str).encode()
     return f"{op}__{hashlib.sha256(blob).hexdigest()[:16]}"
+
+
+# Operations whose response does not depend on the bytes being sent.
+#
+# Requesting an upload slot is the clear case: Perfect Corp returns the same
+# shape whatever the image is, and the only field anything downstream reads is
+# file_id. Keying its stand-in on the payload meant keying it on the file's
+# name and size, so a seeded fixture matched exactly one file with exactly one
+# name — and every live capture missed at step 1, before reaching the analysis
+# fixture that would have hit. The same bytes succeeded as
+# `synthetic_face.jpg` and failed as `frame_0.jpg`.
+#
+# Analysis is emphatically not in this set. Its response *is* a function of the
+# image, and serving a generic stand-in for it would be handing back a reading
+# of a face nobody looked at.
+CONTENT_INDEPENDENT = frozenset({"file-upload"})
+
+GENERIC_KEY = "any"
+
+
+def generic_key(op: str) -> str:
+    return f"{op}__{GENERIC_KEY}"
 
 
 def resolve(op: str, payload: Any, *, synthetic_ok: bool = True) -> Path | None:
@@ -86,6 +108,14 @@ def resolve(op: str, payload: Any, *, synthetic_ok: bool = True) -> Path | None:
         candidate = d / name
         if candidate.exists():
             return candidate
+
+    # Only ever a synthetic file, and only for operations whose answer does not
+    # depend on the payload. `auto` mode asks with synthetic_ok=False, so it
+    # never sees this and still goes out to record the real thing.
+    if synthetic_ok and op in CONTENT_INDEPENDENT:
+        generic = SYNTHETIC_DIR / f"{generic_key(op)}.json"
+        if generic.exists():
+            return generic
     return None
 
 
