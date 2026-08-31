@@ -8,10 +8,10 @@
 *.pfx
 
 # ── Raw biometric data — NEVER commit (GDPR Art. 9 / BIPA / CUBI) ─────────
-# Recorded API responses in fixtures/*.json are derived, not biometric, and
-# are committed on purpose — they are the record of what the API actually
-# returned. Everything under fixtures/synthetic/ is invented and regenerable
-# with `make seed`, so it stays out of the repo.
+# Recorded API responses in fixtures/*.json and fixtures/*.pdf are derived,
+# not biometric, and are committed on purpose — they are the record of what
+# the API actually returned. Everything under fixtures/synthetic/ is invented
+# and regenerable with `make seed`, so it stays out of the repo.
 fixtures/raw/
 fixtures/synthetic/
 fixtures/derived/
