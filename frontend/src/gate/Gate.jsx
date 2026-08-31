@@ -10,31 +10,28 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
+import { Badge, Mark } from '../ui.jsx'
 import { openCamera, stopCamera, captureChallengeSequence } from './cameraKit.js'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
 const S = {
   page: {
-    minHeight: '100vh', background: '#0b0d12', color: '#e8eaf0',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    minHeight: '100vh',
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', padding: 24, textAlign: 'center',
+    justifyContent: 'center', padding: 24, textAlign: 'center', gap: 4,
   },
   video: {
-    width: '100%', maxWidth: 420, borderRadius: 16, background: '#000',
+    width: '100%', maxWidth: 420, borderRadius: 'var(--r-lg)', background: '#000',
+    border: '1px solid var(--border-indigo)',
+    boxShadow: '0 0 0 1px rgba(99,102,241,0.12), 0 12px 48px rgba(99,102,241,0.18)',
     transform: 'scaleX(-1)', // mirror, so it feels like a mirror
   },
   flash: {
     position: 'fixed', inset: 0, opacity: 0, pointerEvents: 'none',
     transition: 'background-color 60ms linear', zIndex: 10,
   },
-  btn: {
-    marginTop: 20, padding: '14px 28px', fontSize: 16, borderRadius: 10,
-    border: 0, background: '#4f7cff', color: '#fff', cursor: 'pointer',
-  },
-  note: { opacity: 0.6, fontSize: 13, maxWidth: 420, lineHeight: 1.5 },
-  warn: { color: '#ffb020', fontSize: 13, maxWidth: 420 },
+  note: { maxWidth: 420 },
 }
 
 export default function Gate() {
@@ -109,18 +106,28 @@ export default function Gate() {
   if (phase === 'consent') {
     return (
       <main style={S.page}>
-        <h1>Verify you're here</h1>
-        <p style={S.note}>
+        <Mark />
+        <h1 style={{ fontSize: 28, margin: '18px 0 4px' }}>Verify you're here</h1>
+        <p className="muted" style={S.note}>
           We'll flash a few colours on screen and take several photos. We check
           that a real person is present and that it's you.
         </p>
-        <p style={S.note}>
-          <strong>No photo is ever stored.</strong> Images exist in memory only
-          for the length of this check. We keep a derived, non-reversible score —
-          never anything that could reconstruct your face.
-        </p>
-        {error && <p style={S.warn}>{error}</p>}
-        <button style={S.btn} onClick={begin}>I understand — open camera</button>
+        <div className="card" style={{ maxWidth: 420, marginTop: 14, textAlign: 'left' }}>
+          <p className="eyebrow" style={{ marginBottom: 8 }}>what we keep</p>
+          <p className="small" style={{ margin: 0 }}>
+            <strong>No photo is ever stored.</strong> Images exist in memory only
+            for the length of this check. We keep a derived, non-reversible
+            score — never anything that could reconstruct your face.
+          </p>
+        </div>
+        {error && (
+          <div className="alert" style={{ maxWidth: 420, marginTop: 14 }}>
+            <p className="small" style={{ margin: 0 }}>{error}</p>
+          </div>
+        )}
+        <button className="btn btn-primary" style={{ marginTop: 22 }} onClick={begin}>
+          I understand — open camera
+        </button>
       </main>
     )
   }
@@ -131,27 +138,39 @@ export default function Gate() {
       <video ref={videoRef} playsInline muted style={S.video} />
 
       {camera && !camera.meetsHdFloor && (
-        <p style={S.warn}>
-          Camera is {camera.shortSide}px on the short side; HD analysis wants
-          1080px. Continuing at reduced fidelity.
-        </p>
+        <div className="alert alert-amber" style={{ maxWidth: 420, marginTop: 14 }}>
+          <p className="small" style={{ margin: 0 }}>
+            Camera is {camera.shortSide}px on the short side; HD analysis wants
+            1080px. Continuing at reduced fidelity.
+          </p>
+        </div>
       )}
 
       {phase === 'ready' && (
         <>
-          <p style={S.note}>Hold still. Turn screen brightness up if you can.</p>
-          <button style={S.btn} onClick={runCapture}>Start check</button>
+          <p className="muted" style={{ ...S.note, marginTop: 18 }}>
+            Hold still. Turn screen brightness up if you can.
+          </p>
+          <button className="btn btn-primary" onClick={runCapture}>Start check</button>
         </>
       )}
-      {phase === 'capturing' && <p style={S.note}>Hold still…</p>}
-      {phase === 'scoring' && <p style={S.note}>Checking…</p>}
+      {phase === 'capturing' && (
+        <p className="muted" style={{ marginTop: 18 }}>Hold still…</p>
+      )}
+      {phase === 'scoring' && (
+        <p className="muted" style={{ marginTop: 18 }}>Checking…</p>
+      )}
       {phase === 'done' && result && (
-        <>
-          <h2>{result.decision}</h2>
-          <p style={S.note}>{result.reason}</p>
-        </>
+        <div style={{ marginTop: 20 }}>
+          <Badge value={result.decision} />
+          <p className="muted" style={{ ...S.note, marginTop: 10 }}>{result.reason}</p>
+        </div>
       )}
-      {error && <p style={S.warn}>{error}</p>}
+      {error && (
+        <div className="alert" style={{ maxWidth: 420, marginTop: 14 }}>
+          <p className="small" style={{ margin: 0 }}>{error}</p>
+        </div>
+      )}
     </main>
   )
 }

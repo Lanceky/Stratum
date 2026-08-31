@@ -20,69 +20,12 @@
  *    "0.55 — approve?" manufactures consent for a decision nobody made.
  */
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+
+import { Badge, Card, Chain, Hash, Mark, Spinner } from '../ui.jsx'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
-
-const INK = '#e8eaf0'
-const MUTED = 'rgba(232,234,240,0.62)'
-const LINE = 'rgba(232,234,240,0.12)'
-
-const S = {
-  page: {
-    minHeight: '100vh', background: '#0b0d12', color: INK,
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    display: 'grid', gridTemplateColumns: 'minmax(300px, 380px) 1fr',
-    alignItems: 'stretch',
-  },
-  queue: { borderRight: `1px solid ${LINE}`, overflowY: 'auto', maxHeight: '100vh' },
-  queueHead: {
-    padding: '20px 20px 12px', borderBottom: `1px solid ${LINE}`,
-    position: 'sticky', top: 0, background: '#0b0d12', zIndex: 1,
-  },
-  h1: { margin: 0, fontSize: 17, letterSpacing: 0.2 },
-  sub: { margin: '6px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.5 },
-  item: {
-    display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
-    padding: '14px 20px', border: 0, borderBottom: `1px solid ${LINE}`,
-    background: 'transparent', color: INK, font: 'inherit',
-  },
-  itemOn: { background: 'rgba(79,124,255,0.13)', boxShadow: 'inset 3px 0 0 #4f7cff' },
-  mono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5 },
-  signal: { margin: '6px 0 0', fontSize: 13, lineHeight: 1.45 },
-  detail: { padding: '24px 28px 64px', overflowY: 'auto', maxHeight: '100vh' },
-  card: {
-    border: `1px solid ${LINE}`, borderRadius: 12, padding: 18,
-    marginBottom: 18, background: 'rgba(255,255,255,0.02)',
-  },
-  cardHead: { margin: '0 0 10px', fontSize: 12, letterSpacing: 1.1, color: MUTED, textTransform: 'uppercase' },
-  row: { display: 'flex', gap: 12, alignItems: 'baseline', padding: '9px 0', borderTop: `1px solid ${LINE}` },
-  btn: {
-    padding: '11px 20px', fontSize: 14, borderRadius: 9, border: 0,
-    cursor: 'pointer', fontWeight: 600,
-  },
-  approve: { background: '#2f9e5e', color: '#fff' },
-  reject: { background: '#c2452e', color: '#fff' },
-  input: {
-    width: '100%', padding: '10px 12px', borderRadius: 8, marginBottom: 12,
-    border: `1px solid ${LINE}`, background: '#11141c', color: INK,
-    font: 'inherit', fontSize: 14, boxSizing: 'border-box',
-  },
-  warn: { color: '#ffb020', fontSize: 13, lineHeight: 1.5 },
-  note: { color: MUTED, fontSize: 12.5, lineHeight: 1.55 },
-  empty: { padding: 40, color: MUTED, fontSize: 14, lineHeight: 1.6 },
-}
-
-const badge = (bg, fg = '#fff') => ({
-  display: 'inline-block', padding: '2px 8px', borderRadius: 999,
-  fontSize: 11, fontWeight: 700, letterSpacing: 0.4, background: bg, color: fg,
-})
-
-const VERDICT = {
-  PASS: badge('rgba(47,158,94,0.22)', '#6ee7a0'),
-  REVIEW: badge('rgba(255,176,32,0.20)', '#ffc861'),
-  FAIL: badge('rgba(194,69,46,0.22)', '#ff9b85'),
-}
 
 /** A check that never ran is not a check that failed — say so distinctly. */
 function checkVerdict(check) {
@@ -90,85 +33,95 @@ function checkVerdict(check) {
   return check.verdict ?? (check.passed ? 'PASS' : 'FAIL')
 }
 
-function Verdict({ value }) {
-  const style = VERDICT[value] ?? badge('rgba(232,234,240,0.14)', MUTED)
-  return <span style={style}>{value}</span>
-}
-
 function timeLeft(expiresAt) {
   const ms = new Date(expiresAt).getTime() - Date.now()
   if (Number.isNaN(ms)) return null
   if (ms <= 0) return 'expired'
   const m = Math.floor(ms / 60000)
-  return m >= 1 ? `${m} min left` : `${Math.floor(ms / 1000)}s left`
+  return m >= 1 ? `${m}m left` : `${Math.floor(ms / 1000)}s left`
 }
 
 function QueueItem({ gate, selected, onSelect }) {
   const left = timeLeft(gate.expires_at)
   return (
     <button
-      style={{ ...S.item, ...(selected ? S.itemOn : null) }}
+      className="queue-item"
+      aria-current={selected}
       onClick={() => onSelect(gate.gate_id)}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ ...S.mono, color: MUTED }}>{gate.gate_id.slice(0, 8)}</span>
-        <span style={{ ...S.mono, color: gate.expired ? '#ff9b85' : MUTED }}>{left}</span>
+      <div className="between">
+        <code className="mono dim">{gate.gate_id.slice(0, 8)}</code>
+        <span
+          className="mono"
+          style={{ color: gate.expired ? 'var(--red)' : 'var(--ink-3)' }}
+        >
+          {left}
+        </span>
       </div>
-      <p style={S.signal}>{gate.triggering_signal}</p>
+      <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.45 }}>
+        {gate.triggering_signal}
+      </p>
     </button>
   )
 }
 
 function Checks({ checks }) {
   if (!checks?.length) {
-    return <p style={S.note}>No check evidence was recorded for this gate.</p>
+    return <p className="muted small">No check evidence was recorded for this gate.</p>
   }
-  return checks.map((c) => {
-    const verdict = checkVerdict(c)
-    return (
-      <div key={c.check_no} style={S.row}>
-        <div style={{ width: 116, flexShrink: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</div>
-          <div style={{ ...S.mono, color: MUTED }}>check {c.check_no}</div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <Verdict value={verdict} />
-          {c.reason && <p style={{ ...S.signal, color: MUTED }}>{c.reason}</p>}
-          {c.limitations?.length > 0 && (
-            <ul style={{ ...S.note, margin: '6px 0 0', paddingLeft: 18 }}>
-              {c.limitations.map((l, i) => <li key={i}>{l}</li>)}
-            </ul>
-          )}
-        </div>
+  return checks.map((c) => (
+    <div key={c.check_no} className="check-row">
+      <div>
+        <div style={{ fontWeight: 600 }}>{c.name}</div>
+        <div className="mono dim">check {c.check_no}</div>
       </div>
-    )
-  })
+      <div>
+        <Badge value={checkVerdict(c)} />
+        {c.reason && (
+          <p className="muted" style={{ margin: '7px 0 0', fontSize: 13 }}>{c.reason}</p>
+        )}
+        {c.limitations?.length > 0 && (
+          <ul className="limits">
+            {c.limitations.map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
+        )}
+      </div>
+    </div>
+  ))
 }
 
 /**
  * The chain result is rendered loudly when broken and quietly when intact.
  * A tamper-evident log whose failure state looks like its success state is
- * decorative, so a break gets colour, an icon and words — not a red dot.
+ * decorative, so a break gets colour, words and a visibly severed link.
  */
-function Chain({ chain }) {
+function Integrity({ chain, timeline }) {
   if (!chain) return null
-  if (chain.ok) {
-    return (
-      <p style={S.note}>
-        ✓ Audit chain intact — {chain.length ?? chain.events ?? '?'} events, each
-        hash covering the one before it. Nothing has been edited after the fact.
-      </p>
-    )
-  }
   return (
-    <div style={{ border: '1px solid #c2452e', background: 'rgba(194,69,46,0.14)', borderRadius: 10, padding: 14 }}>
-      <strong style={{ color: '#ff9b85' }}>⚠ Audit chain is broken.</strong>
-      <p style={{ ...S.warn, margin: '6px 0 0' }}>
-        {chain.reason ?? 'A hash does not match the record it covers.'} Do not
-        authorise this gate. The history you are being shown cannot be trusted,
-        which is a more serious finding than anything in it.
+    <>
+      {chain.ok ? (
+        <p className="muted small" style={{ margin: '0 0 12px' }}>
+          <span style={{ color: 'var(--green)' }}>✓ Intact</span> — {chain.length} blocks,
+          each hash covering the one before it. Nothing was edited after the fact.
+        </p>
+      ) : (
+        <div className="alert" style={{ marginBottom: 14 }}>
+          <strong style={{ color: 'var(--red)' }}>⚠ Audit chain is broken</strong>
+          <p className="small" style={{ margin: '6px 0 0' }}>
+            {chain.reason
+              ? `${chain.reason.replace(/\.?$/, '.')} `
+              : 'A hash does not match the record it covers. '}
+            Do not authorise this gate. The history you are being shown cannot
+            be trusted, which is a more serious finding than anything in it.
+          </p>
+        </div>
+      )}
+      <Chain events={timeline} brokenAt={chain.ok ? null : chain.broken_at} />
+      <p className="dim small" style={{ margin: '4px 0 0' }}>
+        Each block shows its own digest. The link between two blocks is the
+        prev_hash pointer.
       </p>
-    </div>
+    </>
   )
 }
 
@@ -179,20 +132,40 @@ function Timeline({ events }) {
       {events.map((e, i) => {
         const refused = e.type === 'transition.refused'
         return (
-          <li key={i} style={{ ...S.row, borderTop: i ? `1px solid ${LINE}` : 0 }}>
-            <span style={{ ...S.mono, color: MUTED, width: 62, flexShrink: 0 }}>
+          <li key={i} className="check-row" style={{ gridTemplateColumns: '76px 1fr' }}>
+            <span className="mono dim">
               {e.at ? new Date(e.at).toLocaleTimeString() : ''}
             </span>
-            <span style={{ flex: 1, fontSize: 13 }}>
-              <span style={{ color: refused ? '#ff9b85' : INK }}>{e.type}</span>
+            <span style={{ fontSize: 13 }}>
+              <span style={{ color: refused ? 'var(--red)' : 'var(--ink)' }}>
+                {e.type}
+              </span>
+              {/* Three consecutive rows reading "evidence" tell a reviewer
+                  nothing. The score is deliberately not shown: this screen
+                  asks for a judgement, not agreement with a number. */}
+              {e.type === 'evidence' && e.payload?.check_no != null && (
+                <span className="muted"> check {e.payload.check_no}</span>
+              )}
+              {e.type === 'review' && e.payload?.reviewer_id && (
+                <span className="muted">
+                  {' '}{e.payload.decision} by {e.payload.reviewer_id}
+                </span>
+              )}
               {e.payload?.from && (
-                <span style={{ color: MUTED }}> {e.payload.from} → {e.payload.to}</span>
+                <span className="muted"> {e.payload.from} → {e.payload.to}</span>
               )}
               {e.payload?.actor && (
-                <span style={{ ...S.mono, color: MUTED }}> ({e.payload.actor})</span>
+                <span
+                  className="mono"
+                  style={{ marginLeft: 6, color: e.payload.actor === 'human' ? 'var(--indigo-bright)' : 'var(--ink-3)' }}
+                >
+                  {e.payload.actor}
+                </span>
               )}
               {refused && e.payload?.reason && (
-                <div style={{ ...S.warn, marginTop: 3 }}>refused: {e.payload.reason}</div>
+                <div className="small" style={{ color: 'var(--red)', marginTop: 3 }}>
+                  refused: {e.payload.reason}
+                </div>
               )}
             </span>
           </li>
@@ -202,7 +175,7 @@ function Timeline({ events }) {
   )
 }
 
-function Detail({ packet, onResolve, busy, error }) {
+const Detail = React.forwardRef(function Detail({ packet, onResolve, busy, error }, ref) {
   const [reviewer, setReviewer] = useState(
     () => localStorage.getItem('stratum.reviewer') ?? ''
   )
@@ -225,123 +198,134 @@ function Detail({ packet, onResolve, busy, error }) {
   const canReject = named && !stale && !busy
 
   return (
-    <section style={S.detail}>
-      <h2 style={{ margin: '0 0 4px', fontSize: 20 }}>
-        Gate <span style={S.mono}>{packet.gate_id}</span>
-      </h2>
-      <p style={S.sub}>
-        {packet.mode} · <Verdict value={packet.state} />
-        {packet.expired && <span style={{ color: '#ff9b85' }}> · expired</span>}
-      </p>
+    <section ref={ref} className="pane" style={{ padding: '24px 28px 72px' }}>
+      <div className="between" style={{ marginBottom: 18 }}>
+        <div>
+          <h2 style={{ fontSize: 19 }}>
+            Gate <code className="mono" style={{ fontSize: 15 }}>{packet.gate_id.slice(0, 18)}…</code>
+          </h2>
+          <div className="wrap" style={{ marginTop: 8, alignItems: 'center' }}>
+            <Badge value={packet.state} />
+            <span className="mono dim">{packet.mode}</span>
+            {packet.expired && <Badge value="FAIL" title="expired" />}
+          </div>
+        </div>
+        <Hash value={packet.chain?.head} chars={10} />
+      </div>
 
-      <div style={S.card}>
-        <h3 style={S.cardHead}>Why this needs a person</h3>
+      <Card title="Why this needs a person">
         {packet.reasons?.length > 0 ? (
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6, fontSize: 14 }}>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.65 }}>
             {packet.reasons.map((r, i) => <li key={i}>{r}</li>)}
           </ul>
         ) : (
-          <p style={{ margin: 0, fontSize: 14 }}>{packet.triggering_signal}</p>
+          <p style={{ margin: 0 }}>{packet.triggering_signal}</p>
         )}
-        <p style={{ ...S.note, marginTop: 12, marginBottom: 0 }}>
+        <hr className="rule" />
+        <p className="dim small" style={{ margin: 0 }}>
           These are the words the decision layer recorded at the time, read back
           out of the audit chain — not recomputed now. You are seeing what was
           decided and on what basis.
         </p>
-      </div>
+      </Card>
 
-      <div style={S.card}>
-        <h3 style={S.cardHead}>Checks</h3>
+      <Card title="Checks">
         <Checks checks={packet.checks} />
-      </div>
+      </Card>
 
-      <div style={S.card}>
-        <h3 style={S.cardHead}>Integrity</h3>
-        <Chain chain={packet.chain} />
-      </div>
+      <Card title="Integrity">
+        <Integrity chain={packet.chain} timeline={packet.timeline} />
+      </Card>
 
-      <div style={S.card}>
-        <h3 style={S.cardHead}>History</h3>
+      <Card title="History">
         <Timeline events={packet.timeline} />
-      </div>
+      </Card>
 
       {packet.reviews?.length > 0 && (
-        <div style={S.card}>
-          <h3 style={S.cardHead}>Earlier rulings</h3>
+        <Card title="Earlier rulings">
           {packet.reviews.map((r) => (
-            <div key={r.id} style={S.row}>
+            <div key={r.id} className="row" style={{ paddingTop: 6 }}>
+              <Badge value={r.decision === 'approve' ? 'PASS' : 'FAIL'} />
               <span style={{ fontSize: 13 }}>
-                <strong>{r.reviewer_id}</strong> — {r.decision}
-                {r.notes && <span style={{ color: MUTED }}> · {r.notes}</span>}
+                <strong>{r.reviewer_id}</strong>
+                {r.notes && <span className="muted"> — {r.notes}</span>}
               </span>
             </div>
           ))}
-        </div>
+        </Card>
       )}
 
-      <div style={S.card}>
-        <h3 style={S.cardHead}>Your ruling</h3>
-        <p style={{ ...S.note, marginTop: 0 }}>
+      <Card title="Your ruling">
+        <p className="muted small" style={{ marginTop: 0 }}>
           You are not confirming a score. You are deciding a question the
           evidence did not settle, and your name is recorded against it in the
           same tamper-evident chain as everything above.
         </p>
-        <input
-          style={S.input}
-          value={reviewer}
-          onChange={(e) => setReviewer(e.target.value)}
-          placeholder="Your reviewer ID — required"
-          aria-label="Reviewer ID"
-        />
-        <input
-          style={S.input}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Why (optional, but it is the only record of your reasoning)"
-          aria-label="Notes"
-        />
+        <div className="stack" style={{ gap: 10, marginBottom: 12 }}>
+          <input
+            className="input"
+            value={reviewer}
+            onChange={(e) => setReviewer(e.target.value)}
+            placeholder="Your reviewer ID — required"
+            aria-label="Reviewer ID"
+          />
+          <input
+            className="input"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Why (optional, but it is the only record of your reasoning)"
+            aria-label="Notes"
+          />
+        </div>
+
         {stale && (
-          <p style={S.warn}>
-            {packet.expired
-              ? 'This gate has expired. It can no longer be authorised — the person it belongs to must start again.'
-              : `This gate is ${packet.state}; it is no longer awaiting a review.`}
-          </p>
+          <div className="alert alert-amber" style={{ marginBottom: 12 }}>
+            <p className="small" style={{ margin: 0 }}>
+              {packet.expired
+                ? 'This gate has expired. It can no longer be authorised — the person it belongs to must start again.'
+                : `This gate is ${packet.state}; it is no longer awaiting a review.`}
+            </p>
+          </div>
         )}
         {broken && !stale && (
-          <p style={S.warn}>
-            Approval is disabled because the audit chain is broken. You can
-            still reject: refusing is the safe response to a history that
-            cannot be trusted.
-          </p>
+          <div className="alert" style={{ marginBottom: 12 }}>
+            <p className="small" style={{ margin: 0 }}>
+              Approval is disabled because the audit chain is broken. You can
+              still reject: refusing is the safe response to a history that
+              cannot be trusted.
+            </p>
+          </div>
         )}
-        <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-          <button
-            style={{ ...S.btn, ...S.approve, opacity: canApprove ? 1 : 0.45 }}
-            disabled={!canApprove}
-            onClick={() => submit('approve')}
-          >
-            Approve — authorise
+
+        <div className="wrap">
+          <button className="btn btn-primary" disabled={!canApprove}
+                  onClick={() => submit('approve')}>
+            {busy ? <Spinner /> : null} Approve — authorise
           </button>
-          <button
-            style={{ ...S.btn, ...S.reject, opacity: canReject ? 1 : 0.45 }}
-            disabled={!canReject}
-            onClick={() => submit('reject')}
-          >
+          <button className="btn btn-danger" disabled={!canReject}
+                  onClick={() => submit('reject')}>
             Reject
           </button>
         </div>
-        {!named && <p style={{ ...S.note, marginTop: 10 }}>Enter your reviewer ID to rule. An anonymous review is not a review.</p>}
-        {error && <p style={{ ...S.warn, marginTop: 10 }}>{error}</p>}
-      </div>
 
-      <p style={S.note}>
+        {!named && (
+          <p className="dim small" style={{ marginBottom: 0 }}>
+            Enter your reviewer ID to rule. An anonymous review is not a review.
+          </p>
+        )}
+        {error && (
+          <p className="small" style={{ color: 'var(--red)', marginBottom: 0 }}>{error}</p>
+        )}
+      </Card>
+
+      <p className="dim small">
         No capture, landmark or biometric value appears on this screen, by
         design. If resolving this gate seems to require seeing the person's
         face, the correct outcome is to reject and ask them to re-verify.
       </p>
     </section>
   )
-}
+})
 
 export default function Review() {
   const [gates, setGates] = useState(null)
@@ -350,6 +334,7 @@ export default function Review() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [queueError, setQueueError] = useState(null)
+  const detailRef = useRef(null)
 
   const loadQueue = useCallback(async () => {
     try {
@@ -385,6 +370,14 @@ export default function Review() {
     return () => { live = false }
   }, [selected])
 
+  // On a narrow screen the panes stack, so the detail opens below the fold and
+  // a tap looks like it did nothing. Bring it into view.
+  useEffect(() => {
+    if (packet && window.matchMedia('(max-width: 900px)').matches) {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [packet?.gate_id])
+
   const resolve = useCallback(async (gateId, decision, reviewerId, notes) => {
     setBusy(true)
     setError(null)
@@ -410,22 +403,35 @@ export default function Review() {
   }, [loadQueue])
 
   return (
-    <main style={S.page}>
-      <aside style={S.queue}>
-        <div style={S.queueHead}>
-          <h1 style={S.h1}>Awaiting a human</h1>
-          <p style={S.sub}>
-            {gates === null ? 'Loading…'
+    <main className="shell">
+      <aside className="pane" style={{ borderRight: '1px solid var(--border)' }}>
+        <div className="topbar">
+          <Link to="/" style={{ color: 'inherit' }}><Mark /></Link>
+          <span className="eyebrow" style={{ marginLeft: 'auto' }}>reviewer</span>
+        </div>
+
+        <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border)' }}>
+          <h1 style={{ fontSize: 16 }}>Awaiting a human</h1>
+          <p className="muted small" style={{ margin: '6px 0 0' }}>
+            {gates === null
+              ? 'Loading…'
               : `${gates.length} gate${gates.length === 1 ? '' : 's'} the checks could not settle. Oldest first.`}
           </p>
         </div>
-        {queueError && <p style={{ ...S.warn, padding: 20 }}>{queueError}</p>}
+
+        {queueError && (
+          <div style={{ padding: 20 }}>
+            <div className="alert"><p className="small" style={{ margin: 0 }}>{queueError}</p></div>
+          </div>
+        )}
+
         {gates?.length === 0 && !queueError && (
-          <p style={S.empty}>
+          <p className="muted" style={{ padding: '32px 20px', lineHeight: 1.6 }}>
             Nothing waiting. Every gate either passed all three checks or was
             refused outright — no judgement call is outstanding.
           </p>
         )}
+
         {gates?.map((g) => (
           <QueueItem
             key={g.gate_id} gate={g}
@@ -435,10 +441,10 @@ export default function Review() {
       </aside>
 
       {packet
-        ? <Detail packet={packet} onResolve={resolve} busy={busy} error={error} />
+        ? <Detail ref={detailRef} packet={packet} onResolve={resolve} busy={busy} error={error} />
         : (
-          <section style={S.detail}>
-            <p style={S.empty}>
+          <section className="pane" style={{ display: 'grid', placeItems: 'center', padding: 40 }}>
+            <p className="muted" style={{ maxWidth: 340, textAlign: 'center' }}>
               {error ?? 'Select a gate to see the signal that referred it.'}
             </p>
           </section>

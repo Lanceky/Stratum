@@ -251,7 +251,11 @@ def review_packet(gate_id: str) -> dict:
         "triggering_signal": _triggering_signal(evidence, reasons),
         "reasons": reasons,
         "checks": [_check_summary(row) for row in evidence],
+        # The hash travels with each event so the console can draw the chain
+        # as linked blocks. It is the real digest, not a rendering flourish:
+        # the picture is only worth showing if it is the actual structure.
         "timeline": [{"at": e.get("ts"), "type": e["type"],
+                      "hash": e.get("hash"), "prev_hash": e.get("prev_hash"),
                       "payload": _detail({"detail": e.get("payload")})}
                      for e in store.chain(gate_id)],
         "chain": chain,
@@ -651,7 +655,11 @@ def decide(body: FusionRequest) -> dict:
         # rested on, and a reviewer opening the gate later sees a referral with
         # no visible cause.
         already = {int(r["check_no"]) for r in store.evidence_for(body.gate_id)}
-        for outcome in decision["checks"]:
+        # Written in check order rather than fusion's alphabetical order, so the
+        # ledger reads 1, 2, 3. Fusion sorts by name for its own reasons; that
+        # ordering means nothing to someone reading the history.
+        for outcome in sorted(decision["checks"],
+                              key=lambda o: CHECK_NUMBERS.get(o["name"], 99)):
             no = CHECK_NUMBERS.get(outcome["name"])
             if no is None or no in already:
                 continue

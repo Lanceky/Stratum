@@ -215,6 +215,34 @@ def test_packet_reports_the_chain_state(client):
     assert p["chain"]["length"] > 0
 
 
+def test_timeline_carries_each_events_hash(client):
+    """
+    The console draws the trail as linked blocks, one per event, labelled with
+    its own digest. That picture is only worth showing if it is the real
+    structure, so the hashes must travel with the timeline rather than being
+    invented client-side.
+    """
+    gate_id = referred(client)
+    timeline = packet(client, gate_id)["timeline"]
+    assert all(len(e["hash"]) == 64 for e in timeline)
+    # Each event names its predecessor; that link is what the drawing shows.
+    for prev, nxt in zip(timeline, timeline[1:]):
+        assert nxt["prev_hash"] == prev["hash"]
+
+
+def test_evidence_is_written_in_check_order(client):
+    """
+    Fusion sorts its outcomes by name for its own reasons (authenticity,
+    binding, presence). That ordering means nothing to someone reading the
+    history, where 1, 2, 3 is the only sequence that reads naturally.
+    """
+    gate_id = referred(client)
+    events = client.get(f"/gates/{gate_id}/audit").json()["events"]
+    order = [json.loads(e["payload"])["check_no"]
+             for e in events if e["type"] == "evidence"]
+    assert order == [1, 2, 3]
+
+
 def test_packet_shows_the_history_including_refusals(client):
     gate_id = referred(client)
     client.post(f"/gates/{gate_id}/transition",
