@@ -194,3 +194,64 @@ def test_decision_exposes_requires_human_in_dict():
 
 def test_empty_input_does_not_pass():
     assert fuse({}).verdict == REVIEW
+
+
+# ── a missing check must not mask an absent one ───────────────────────────
+def test_missing_and_absent_are_both_reported():
+    """
+    The capture route's real shape: the sensor died, so presence is `ran=false`
+    and the two checks that depended on it were never submitted at all.
+
+    Reporting only "not submitted" names the consequence and hides the cause.
+    All three routes here land on REVIEW, so they are peers with no ranking to
+    preserve between them — unlike a violation, which is a different verdict
+    and must not be buried under them.
+    """
+    d = fuse({"presence": result(ran=False, passed=False, score=0.0,
+                                 verdict=REVIEW, reason="sensor unreachable")})
+    assert d.verdict == REVIEW
+
+    joined = " ".join(d.reasons)
+    assert "no result submitted" in joined, "the unsubmitted checks went unmentioned"
+    assert "presence" in joined, "the check that could not run went unmentioned"
+
+
+def test_a_violation_is_still_reported_alone():
+    """
+    The ordering that *is* deliberate. A failed check outranks a missing one:
+    burying "presence was refuted" under "binding was not submitted" would
+    report the wrong finding as the headline.
+    """
+    d = fuse({"presence": result(passed=False, verdict=FAIL, reason="spoofed")})
+    assert d.verdict == FAIL
+    assert len(d.reasons) == 1
+    assert "no result submitted" not in " ".join(d.reasons)
+
+
+def test_an_absent_check_is_reported_once_not_twice():
+    """
+    `ran=False` with `verdict=REVIEW` landed in both the absent and unsettled
+    lists, so the same check appeared twice — once as boilerplate and once with
+    the finding that mattered. A queue that repeats itself trains reviewers to
+    skim, which is the one habit this band cannot afford.
+    """
+    d = fuse({"presence": result(ran=False, passed=False, score=0.0,
+                                 verdict=REVIEW, reason="sensor unreachable"),
+              "authenticity": result(),
+              "binding": result()})
+    assert sum("presence" in r for r in d.reasons) == 1
+
+
+def test_an_absent_check_keeps_the_could_not_run_framing():
+    """
+    "no enrolled reference exists" and "the faces did not match" are one word
+    apart on a queue and a world apart in meaning. The reason is worth showing,
+    but never in place of the fact that nothing was examined.
+    """
+    d = fuse({"presence": result(),
+              "authenticity": result(),
+              "binding": result(ran=False, passed=False, verdict=REVIEW,
+                                reason="no enrolled reference capture exists")})
+    binding = next(r for r in d.reasons if r.startswith("binding"))
+    assert "could not run" in binding
+    assert "no enrolled reference capture exists" in binding

@@ -171,27 +171,44 @@ def fuse(results: dict[str, dict]) -> Decision:
         reasons.append(f"{o.name}: {o.reason or 'check ran and was not satisfied'}")
 
     missing = [name for name in REQUIRED if name not in by_name]
-    absent = [o.name for o in outcomes if not o.ran]
-    unsettled = [o for o in outcomes if o.verdict == REVIEW]
+    absent = [o for o in outcomes if not o.ran]
+    # A check that did not run is already accounted for above. Without this it
+    # lands in both lists and is reported twice — once as boilerplate and once
+    # with the finding that actually matters, which trains a reviewer to skim.
+    unsettled = [o for o in outcomes if o.verdict == REVIEW and o.ran]
 
     if violated:
         return Decision(FAIL, outcomes, reasons)
 
-    if missing:
+    # Everything below lands on REVIEW. Missing, absent and unsettled are peers
+    # at that level, so all three are reported rather than the first one found:
+    # a gate where the sensor died *and* two checks went unsubmitted was
+    # otherwise described only as "not submitted", which names the consequence
+    # and hides the cause. The FAIL path above still short-circuits, because a
+    # violated check is a different verdict and must not be buried.
+    #
+    # Ordered cause-first. These are the words a reviewer reads at the top of a
+    # queue, and "two checks were not submitted" explains nothing about why.
+    #
+    # The "could not run" framing is kept even when the check supplied its own
+    # reason. A bare finding reads like the verdict of a check that looked —
+    # "no enrolled reference exists" and "the faces did not match" are one word
+    # apart on a queue and a world apart in meaning.
+    for o in absent:
         reasons.append(
-            f"no result submitted for {', '.join(missing)} — a gate cannot pass "
-            f"on checks that were never attempted")
-        return Decision(REVIEW, outcomes, reasons)
-
-    for name in absent:
-        reasons.append(
-            f"{name}: could not run, so it produced no evidence. Absence of "
+            f"{o.name}: could not run — {o.reason}" if o.reason else
+            f"{o.name}: could not run, so it produced no evidence. Absence of "
             f"evidence is not evidence of absence, and a check that did not "
             f"look cannot stand in for one that looked and was satisfied")
     for o in unsettled:
         reasons.append(f"{o.name}: {o.reason or 'evidence does not settle the question'}")
 
-    if absent or unsettled:
+    if missing:
+        reasons.append(
+            f"no result submitted for {', '.join(missing)} — a gate cannot pass "
+            f"on checks that were never attempted")
+
+    if missing or absent or unsettled:
         return Decision(REVIEW, outcomes, reasons)
 
     return Decision(PASS, outcomes, ["every check ran and was satisfied"])
