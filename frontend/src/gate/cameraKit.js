@@ -80,31 +80,44 @@ export async function captureFrame(videoEl, quality = 0.95) {
 /**
  * Capture a multi-frame sequence driven by the server's challenge spec.
  *
- * This is the raw material for check 1: each frame is tagged with the colour
- * that was on screen when it was taken, so the verifier can assert that the
- * volatile channels moved in the physically correct direction.
+ * This is the raw material for check 1: each frame is taken under a colour the
+ * server chose, so the verifier can assert that the volatile channels moved in
+ * the physically correct direction between frames.
  *
  * The flash colours come from the server nonce and are never known to the
  * client in advance — that is what defeats a pre-recorded injected stream.
+ *
+ * `challenge` is the server's `client_view()`: frames are
+ * `{index, colour, hex, pose, hd, hold_ms}`. `colour` is a name ("red"); `hex`
+ * is the value to actually paint. Each frame's own `hold_ms` is honoured
+ * rather than a fixed delay, because check 1's timing signal fails any gap
+ * shorter than the hold time it asked for.
  */
 export async function captureChallengeSequence(videoEl, flashEl, challenge, opts = {}) {
-  const { settleMs = 220, quality = 0.95 } = opts
+  const { settleMs = 220, quality = 0.95, onFrame } = opts
   const frames = []
 
-  for (const [index, colour] of challenge.colours.entries()) {
-    flashEl.style.backgroundColor = colour
+  for (const f of challenge.frames) {
+    // The prompt has to be shown *before* the hold, not after: the pose is
+    // what the frame is evidence of, and a person told to move once the
+    // shutter has closed has been asked for nothing.
+    onFrame?.(f, frames.length, challenge.frames.length)
+
+    flashEl.style.backgroundColor = f.hex
     flashEl.style.opacity = '1'
 
-    // Let the display and the sensor's auto-exposure settle before sampling.
-    await new Promise((r) => setTimeout(r, settleMs))
+    // Let the display and the sensor's auto-exposure settle before sampling,
+    // then stay on the colour for as long as the challenge demanded.
+    const hold = Math.max(f.hold_ms ?? 0, settleMs)
+    await new Promise((r) => setTimeout(r, hold))
 
     const blob = await captureFrame(videoEl, quality)
     frames.push({
-      index,
-      colour,
+      frameIndex: f.index,
+      colour: f.colour,
       blob,
       capturedAt: Date.now(),
-      pose: challenge.poses?.[index] ?? null,
+      pose: f.pose ?? null,
     })
   }
 

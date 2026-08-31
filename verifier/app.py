@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from dimensions import STABLE, VOLATILE
@@ -33,6 +36,10 @@ CHECK_NUMBERS = {"presence": 1, "authenticity": 2, "binding": 3}
 # the transition rules are identical either way, which is the point of keeping
 # them in gate.py rather than in a Xano function stack alone.
 store = Store(os.getenv("STRATUM_DB", ":memory:"))
+
+# Set on first use by /demo/gate. Not persisted: if the process restarts the
+# next demo gate simply gets a fresh workflow, which costs nothing.
+_demo_workflow: str | None = None
 
 
 class HealthResponse(BaseModel):
@@ -82,6 +89,37 @@ def create_gate(body: GateCreate) -> dict:
                              body.challenge_spec, body.ttl_s)
 
 
+@app.post("/demo/gate", status_code=201)
+def demo_gate(ttl_s: int = 600) -> dict:
+    """
+    A gate anyone can open, for the demo at /gate/demo.
+
+    Tenants and workflows are created out of band in a real deployment — an
+    agent is issued credentials, and it requests a gate. Nothing in the HTTP
+    surface creates them, so without this a freshly cloned repo cannot reach
+    the capture screen at all.
+
+    Kept as its own route rather than a special case inside `create_gate`, so
+    the demo affordance is visible in the route list and cannot be reached by
+    accident from the production path.
+
+    Only the fields a browser needs are returned. `/gates` hands back the whole
+    row including the nonce, which is defensible there because the caller is
+    the credentialed agent that owns the gate — but this route is open to
+    anyone, and handing the challenge secret to the client would undo the
+    reason `/challenge` accepts a gate_id in the first place.
+    """
+    global _demo_workflow
+    if _demo_workflow is None:
+        tenant = store.create_tenant("demo.stratum.local", "demo-no-auth")
+        _demo_workflow = store.create_workflow(
+            tenant["id"], "wire_transfer_approval",
+            {"note": "demo workflow — not a real authorisation"})["id"]
+    gate = store.create_gate(_demo_workflow, GateMode.AUTHORISE_ACTION,
+                             None, ttl_s)
+    return {k: gate[k] for k in ("id", "mode", "state", "expires_at", "created_at")}
+
+
 @app.get("/gates/{gate_id}")
 def read_gate(gate_id: str) -> dict:
     gate = store.get("gates", gate_id)
@@ -108,6 +146,144 @@ def transition(gate_id: str, body: TransitionRequest) -> dict:
             "from": str(exc.frm), "to": str(exc.to),
             "actor": str(exc.actor), "reason": exc.reason,
         }) from None
+
+
+# ── capture (Step 2c) ─────────────────────────────────────────────────────
+# The route the camera talks to. Everything above it is state; this is the one
+# place a photograph enters the service, and it leaves again as a score.
+
+
+def _sensor_absent(reason: str, n_frames: int) -> dict:
+    """
+    Check 1's result when the skin sensor could not be reached.
+
+    Shaped like a real presence result so fusion needs no special case, but with
+    `ran=false`, which fusion already knows means REVIEW rather than FAIL. The
+    reason is carried verbatim: a reviewer who sees "check 1 could not run"
+    with no cause cannot tell a missing credential from an attack.
+    """
+    return {
+        "ran": False, "passed": False, "score": 0.0, "verdict": str(GateState.REVIEW),
+        "reason": f"the skin sensor could not be reached ({reason})",
+        "signals": [], "failed": [], "limitations": [
+            "no frame was scored; this gate carries no presence evidence at all",
+        ],
+        "frames_captured": n_frames,
+    }
+
+
+@app.post("/gates/{gate_id}/capture")
+async def capture(gate_id: str,
+                  frames: list[UploadFile] = File(...),
+                  captured_at: list[float] = Form(...)) -> dict:
+    """
+    A completed challenge sequence: images in, authorisation decision out.
+
+    The whole gate lifecycle runs here because the steps are not independently
+    meaningful — a capture that is scored but never fused leaves a gate parked
+    in SCORED with nobody responsible for moving it. One request, one outcome.
+
+    The challenge is re-derived from the gate's own nonce, which the client
+    never sends. Nothing in this request can influence what the capture was
+    supposed to demonstrate; that is the property the whole check rests on.
+
+    `captured_at` is milliseconds since the Unix epoch, because that is what
+    `Date.now()` returns and a browser converting units is a browser that can
+    get them wrong. The conversion to the seconds `checks/presence.py` works in
+    happens once, below.
+
+    Images are read into memory, scored, and dropped. Only `derived` reaches the
+    database, and the `captures` table has no column that could hold anything
+    else. See capture.py.
+    """
+    import challenge as ch
+    from checks.authenticity import evaluate as authenticity_eval
+    from checks.presence import evaluate as presence_eval
+    from capture import SensorUnavailable, analyse, frame_record
+
+    gate = store.get("gates", gate_id)
+    if gate is None:
+        raise HTTPException(404, "no such gate")
+
+    # An expired gate must not be scored. Doing the work first and refusing the
+    # transition afterwards would spend Perfect Corp units on a foregone answer.
+    gate = store.expire_if_due(gate_id)
+    if gate["state"] in (str(GateState.FAIL), str(GateState.SEALED)):
+        raise HTTPException(409, f"gate is {gate['state']} and cannot be captured")
+
+    try:
+        spec = ch.derive(gate["nonce"])
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    if len(frames) != len(spec.frames):
+        raise HTTPException(
+            422, f"challenge asked for {len(spec.frames)} frames, got {len(frames)}")
+    if len(captured_at) != len(frames):
+        raise HTTPException(
+            422, f"got {len(frames)} frames but {len(captured_at)} timestamps")
+
+    stamps = [ms / 1000.0 for ms in captured_at]
+
+    # The nonce is minted when the gate is created, so that is the moment the
+    # challenge became answerable. Using the first frame's own timestamp here
+    # would make presence's "a frame predates the challenge" test structurally
+    # incapable of firing — a check that cannot fail is not a check.
+    issued_at = datetime.fromisoformat(gate["created_at"]).timestamp()
+
+    # Every frame is read and checked before any is scored. Interleaving the
+    # two would spend Perfect Corp units on frames 0..n-1 of a request that is
+    # about to be refused because frame n is empty. Four JPEGs in memory is a
+    # trade worth making against that.
+    images: list[bytes] = []
+    for i, upload in enumerate(frames):
+        data = await upload.read()
+        if not data:
+            raise HTTPException(422, f"frame {i} is empty")
+        images.append(data)
+
+    # A human physically stood in front of a camera. Recorded before scoring,
+    # because it happened whether or not the sensor was reachable, and a gate
+    # that fails to score still needs the capture in its history.
+    try:
+        store.gate_transition(gate_id, GateState.CAPTURED, Actor.HUMAN,
+                              {"frames": len(frames)})
+    except IllegalTransition as exc:
+        raise HTTPException(409, {
+            "error": "illegal_transition", "from": str(exc.frm),
+            "to": str(exc.to), "reason": exc.reason,
+        }) from None
+
+    records: list[dict] = []
+    unavailable: str | None = None
+    with tempfile.TemporaryDirectory(prefix="stratum-capture-") as tmp:
+        for i, data in enumerate(images):
+            try:
+                derived = analyse(data, f"frame_{i}.jpg",
+                                  mask_dir=Path(tmp) / f"frame_{i}")
+            except SensorUnavailable as exc:
+                unavailable = str(exc)
+                break
+            store.add_capture(gate_id, i, derived, derived.get("pc_task_id"))
+            records.append(frame_record(derived, i, stamps[i]))
+    images.clear()
+
+    if unavailable is None:
+        presence = presence_eval(records, spec, issued_at=issued_at).as_dict()
+        authenticity = authenticity_eval(
+            records[0]["scores"], authenticity_baseline()).as_dict()
+    else:
+        presence = _sensor_absent(unavailable, len(frames))
+        authenticity = None
+
+    store.gate_transition(gate_id, GateState.SCORED, Actor.SYSTEM,
+                          {"frames_scored": len(records)})
+
+    # Binding is deliberately absent: there is no enrolment on file for a
+    # walk-up gate, and fusion reports an unattempted check as REVIEW rather
+    # than letting the gate pass on the two checks that did run.
+    return decide(FusionRequest(presence=presence, authenticity=authenticity,
+                                gate_id=gate_id))
 
 
 class ReviewDecision(BaseModel):
@@ -420,7 +596,17 @@ def compare(pair: ComparePair) -> dict:
 
 # ── check 1: presence (Step 5) ────────────────────────────────────────────
 class ChallengeRequest(BaseModel):
-    nonce: str = Field(min_length=8)
+    """
+    Either the nonce itself, or the gate that owns one.
+
+    `gate_id` exists so a browser never has to hold the nonce. A client that
+    cannot name the nonce cannot substitute one, and the capture route re-reads
+    the gate's own nonce anyway — so the two ends of the session are derived
+    from the same server-held secret with nothing in between to corrupt.
+    """
+
+    nonce: str | None = Field(None, min_length=8)
+    gate_id: str | None = None
     n_frames: int | None = None
 
 
@@ -450,14 +636,53 @@ def issue_challenge(body: ChallengeRequest) -> dict:
     there is no server state for an attacker to race and nothing to keep in
     sync. The predictions are withheld: telling a client which way each score
     must move is telling a forger what to fake.
+
+    Given a `gate_id`, the gate's nonce is used and the gate moves to
+    CHALLENGED, so the audit chain records the moment the demand was made. The
+    transition goes through `gate_transition` like every other, which is what
+    stops a second call quietly re-issuing a challenge on a gate that has
+    already been captured.
     """
     import challenge as ch
 
+    nonce = body.nonce
+    gate = None
+    if body.gate_id:
+        gate = store.get("gates", body.gate_id)
+        if gate is None:
+            raise HTTPException(404, "no such gate")
+        gate = store.expire_if_due(body.gate_id)
+        nonce = gate["nonce"]
+    if not nonce:
+        raise HTTPException(422, "supply either a nonce or a gate_id")
+
+    # A gate's challenge length is not the client's to choose. The capture route
+    # re-derives the spec with the default, so a shortened challenge would fail
+    # the frame count anyway — but refusing it here says why, instead of letting
+    # someone believe they had negotiated an easier test.
+    if gate is not None and body.n_frames:
+        raise HTTPException(422, "n_frames cannot be set for a gate's challenge")
+
     kw = {"n_frames": body.n_frames} if body.n_frames else {}
     try:
-        return ch.derive(body.nonce, **kw).client_view()
+        spec = ch.derive(nonce, **kw).client_view()
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+    if gate is not None:
+        try:
+            gate = store.gate_transition(
+                body.gate_id, GateState.CHALLENGED, Actor.SYSTEM,
+                {"n_frames": len(spec["frames"])})
+        except IllegalTransition as exc:
+            raise HTTPException(409, {
+                "error": "illegal_transition", "from": str(exc.frm),
+                "to": str(exc.to), "reason": exc.reason,
+            }) from None
+        spec["gate_id"] = body.gate_id
+        spec["expires_at"] = gate["expires_at"]
+
+    return spec
 
 
 @app.post("/check/presence")
