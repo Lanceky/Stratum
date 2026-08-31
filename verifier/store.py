@@ -135,6 +135,45 @@ class Store:
             out.append({"at": e["ts"], "hash": e["hash"], **payload})
         return out
 
+    def rewrite_past_event(self, gate_id: str, index: int,
+                           payload: Any) -> dict:
+        """
+        Edit an event that has already been written, in place.
+
+        Nothing in the API reaches this. It is here so the demo can show what
+        the chain is actually for: the threat is not a caller with a stolen
+        key — that caller cannot alter a past event at all, only append — but
+        somebody at the database with enough privilege to drop the guard.
+
+        So this drops the guard, edits the row, and puts the guard back,
+        which is the most favourable possible version of that attack: no
+        trace left in the schema, no error raised, the row simply different
+        than it was. The stored hash is left alone, because an attacker who
+        recomputed it would still have to recompute every hash after it, and
+        the point of the exercise is that verify_chain notices either way.
+        """
+        events = self.chain(gate_id)
+        if not 0 <= index < len(events):
+            raise IndexError(
+                f"gate has {len(events)} events, no index {index}")
+
+        event = events[index]
+        before = event["payload"]
+        after = ledger.canonical_json(payload)
+
+        guard = schema.trigger_name("audit_events", "UPDATE")
+        self.db.execute(f"DROP TRIGGER IF EXISTS {guard}")
+        try:
+            self.db.execute("UPDATE audit_events SET payload = ? WHERE id = ?",
+                            (after, event["id"]))
+            self.db.commit()
+        finally:
+            self.db.execute(schema.trigger_sql("audit_events", "UPDATE"))
+            self.db.commit()
+
+        return {"index": index, "type": event["type"], "hash": event["hash"],
+                "before": before, "after": after}
+
     # ── gates ─────────────────────────────────────────────────────────────
     def create_gate(self, workflow_id: str, mode: GateMode | str,
                     challenge_spec: dict | None = None,

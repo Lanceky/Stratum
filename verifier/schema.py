@@ -147,6 +147,26 @@ TABLES: dict[str, list[Column]] = {
 # production; the tamper-evidence claim rests on this.
 APPEND_ONLY = ["audit_events"]
 
+APPEND_ONLY_OPS = ("UPDATE", "DELETE")
+
+
+def trigger_name(table: str, op: str) -> str:
+    return f"{table}_no_{op.lower()}"
+
+
+def trigger_sql(table: str, op: str) -> str:
+    """
+    The guard that makes a table append-only.
+
+    One definition, used both when the database is created and when the demo
+    puts the trigger back after deliberately going around it. Two copies of
+    this string would eventually disagree, and the restored guard would be
+    weaker than the original without anything saying so.
+    """
+    return (f"CREATE TRIGGER IF NOT EXISTS {trigger_name(table, op)} "
+            f"BEFORE {op} ON {table} BEGIN "
+            f"SELECT RAISE(ABORT, '{table} is append-only'); END")
+
 
 def create_sql() -> list[str]:
     stmts = []
@@ -159,12 +179,8 @@ def create_sql() -> list[str]:
                     f"CREATE INDEX IF NOT EXISTS ix_{table}_{c.name} ON {table}({c.name})")
 
     for table in APPEND_ONLY:
-        for op in ("UPDATE", "DELETE"):
-            stmts.append(
-                f"CREATE TRIGGER IF NOT EXISTS {table}_no_{op.lower()} "
-                f"BEFORE {op} ON {table} BEGIN "
-                f"SELECT RAISE(ABORT, '{table} is append-only'); END"
-            )
+        for op in APPEND_ONLY_OPS:
+            stmts.append(trigger_sql(table, op))
     return stmts
 
 

@@ -120,6 +120,46 @@ def demo_gate(ttl_s: int = 600) -> dict:
     return {k: gate[k] for k in ("id", "mode", "state", "expires_at", "created_at")}
 
 
+class TamperRequest(BaseModel):
+    index: int = 0
+    payload: dict | None = None
+
+
+@app.post("/demo/gates/{gate_id}/tamper")
+def demo_tamper(gate_id: str, body: TamperRequest) -> dict:
+    """
+    Rewrite one past event, so the demo can show verify_chain catching it.
+
+    Off unless STRATUM_DEMO_TAMPER is set. It corrupts real data on purpose,
+    and an endpoint that does that should have to be asked for by name rather
+    than be present in every deployment waiting to be found.
+
+    Worth being precise about what this proves. It is not that the API refuses
+    to tamper — the API has no such route, which is the ordinary case and
+    proves nothing interesting. It is that an attacker who gets *underneath*
+    the API, with rights to drop the trigger and edit the table directly,
+    still cannot make the edit look like it was always there.
+    """
+    if not os.getenv("STRATUM_DEMO_TAMPER"):
+        raise HTTPException(
+            404, "demo tampering is off; start the server with "
+                 "STRATUM_DEMO_TAMPER=1 to enable it")
+
+    if store.get("gates", gate_id) is None:
+        raise HTTPException(404, "no such gate")
+
+    payload = body.payload
+    if payload is None:
+        payload = {"note": "nothing to see here"}
+
+    try:
+        change = store.rewrite_past_event(gate_id, body.index, payload)
+    except IndexError as e:
+        raise HTTPException(400, str(e))
+
+    return {"tampered": change, "chain": store.verify_chain(gate_id).as_dict()}
+
+
 @app.get("/gates/{gate_id}")
 def read_gate(gate_id: str) -> dict:
     gate = store.get("gates", gate_id)

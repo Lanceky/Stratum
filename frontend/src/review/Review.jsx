@@ -102,7 +102,7 @@ function Checks({ checks }) {
  * A tamper-evident log whose failure state looks like its success state is
  * decorative, so a break gets colour, words and a visibly severed link.
  */
-function Integrity({ chain, timeline }) {
+function Integrity({ chain, timeline, gateId, onTampered }) {
   if (!chain) return null
   return (
     <>
@@ -128,6 +128,75 @@ function Integrity({ chain, timeline }) {
         Each block shows its own digest. The link between two blocks is the
         prev_hash pointer.
       </p>
+      <Tamper chain={chain} timeline={timeline} gateId={gateId}
+              onTampered={onTampered} />
+    </>
+  )
+}
+
+/**
+ * Break the record on purpose, to show that breaking it shows.
+ *
+ * A chain that has only ever been intact demonstrates nothing — "✓ Intact" is
+ * a claim about code the reviewer cannot see. This makes the property
+ * falsifiable in front of them.
+ *
+ * It aims at a refusal block when there is one, because that is the edit an
+ * attacker would actually want: not vandalism, but quietly erasing the record
+ * that an agent was told no.
+ */
+function Tamper({ chain, timeline, gateId, onTampered }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  if (!chain.ok) return null
+
+  const refusedAt = timeline?.findIndex((e) => e.type === 'transition.refused')
+  const index = refusedAt >= 0 ? refusedAt : 0
+  const target = timeline?.[index]
+
+  const run = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API}/demo/gates/${gateId}/tamper`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          index,
+          payload: { note: 'nothing to see here' },
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.detail ?? `refused (${res.status})`)
+      onTampered?.()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <hr className="rule" />
+      <div className="between wrap" style={{ gap: 12 }}>
+        <p className="dim small" style={{ margin: 0, maxWidth: '46ch' }}>
+          Intact is only worth reading if broken were possible. Edit block{' '}
+          <span className="mono">#{String(index).padStart(2, '0')}</span>
+          {target?.type && <> (<span className="mono">{target.type}</span>)</>}
+          {' '}underneath the API — drop the append-only trigger, rewrite the
+          row, put the trigger back.
+        </p>
+        <button className="btn ghost" onClick={run} disabled={busy}>
+          {busy ? 'Editing…' : 'Tamper with the record'}
+        </button>
+      </div>
+      {error && (
+        <p className="small" style={{ color: 'var(--amber)', margin: '10px 0 0' }}>
+          {error}
+        </p>
+      )}
     </>
   )
 }
@@ -222,7 +291,8 @@ function Escalations({ events }) {
   )
 }
 
-const Detail = React.forwardRef(function Detail({ packet, onResolve, busy, error }, ref) {
+const Detail = React.forwardRef(function Detail(
+  { packet, onResolve, onTampered, busy, error }, ref) {
   const [reviewer, setReviewer] = useState(
     () => localStorage.getItem('stratum.reviewer') ?? ''
   )
@@ -283,7 +353,8 @@ const Detail = React.forwardRef(function Detail({ packet, onResolve, busy, error
       </Card>
 
       <Card title="Integrity">
-        <Integrity chain={packet.chain} timeline={packet.timeline} />
+        <Integrity chain={packet.chain} timeline={packet.timeline}
+                   gateId={packet.gate_id} onTampered={onTampered} />
       </Card>
 
       <Card title="History">
@@ -383,6 +454,7 @@ export default function Review() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [queueError, setQueueError] = useState(null)
+  const [refresh, setRefresh] = useState(0)
   const detailRef = useRef(null)
 
   const loadQueue = useCallback(async () => {
@@ -417,7 +489,7 @@ export default function Review() {
       .then((p) => { if (live) setPacket(p) })
       .catch((e) => { if (live) { setError(e.message); setPacket(null) } })
     return () => { live = false }
-  }, [selected])
+  }, [selected, refresh])
 
   // On a narrow screen the panes stack, so the detail opens below the fold and
   // a tap looks like it did nothing. Bring it into view.
@@ -490,7 +562,9 @@ export default function Review() {
       </aside>
 
       {packet
-        ? <Detail ref={detailRef} packet={packet} onResolve={resolve} busy={busy} error={error} />
+        ? <Detail ref={detailRef} packet={packet} onResolve={resolve}
+                  onTampered={() => setRefresh((n) => n + 1)}
+                  busy={busy} error={error} />
         : (
           <section className="pane" style={{ display: 'grid', placeItems: 'center', padding: 40 }}>
             <p className="muted" style={{ maxWidth: 340, textAlign: 'center' }}>
