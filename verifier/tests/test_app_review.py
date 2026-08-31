@@ -189,21 +189,99 @@ def test_limitations_reach_the_reviewer(client):
 FORBIDDEN = ("constellation", "landmark", "image", "frame_", "photo",
              "capture_blob", "pixels", "descriptor", "embedding")
 
+# Terms that are unambiguous field names. Scanned inside string values as well
+# as keys, because seeing one in prose would itself be suspicious.
+FORBIDDEN_IN_PROSE = ("constellation", "capture_blob", "descriptor", "embedding")
+
+
+def _keys(node) -> list[str]:
+    if isinstance(node, dict):
+        return [k.lower() for k in node] + [x for v in node.values() for x in _keys(v)]
+    if isinstance(node, list):
+        return [x for v in node for x in _keys(v)]
+    return []
+
+
+def _strings(node) -> list[str]:
+    if isinstance(node, dict):
+        return [x for v in node.values() for x in _strings(v)]
+    if isinstance(node, list):
+        return [x for v in node for x in _strings(v)]
+    return [node.lower()] if isinstance(node, str) else []
+
+
+def _coordinate_arrays(node) -> list:
+    """Nested numeric pairs — the shape a constellation would arrive in."""
+    found = []
+    if isinstance(node, dict):
+        for v in node.values():
+            found += _coordinate_arrays(v)
+    elif isinstance(node, list):
+        if (len(node) >= 2 and all(isinstance(p, list) and len(p) == 2
+                                   and all(isinstance(n, (int, float)) for n in p)
+                                   for p in node)):
+            found.append(node)
+        for v in node:
+            found += _coordinate_arrays(v)
+    return found
+
+
+def assert_no_biometric_material(payload) -> None:
+    """
+    No biometric material on the reviewer screen (context.md §11.8).
+
+    Checked against field names and structure rather than by searching the
+    serialised blob for substrings. The blob scan flagged the word
+    "photograph" inside a check's own explanation of what it cannot establish
+    — prose that is the entire point of the console — while a constellation
+    smuggled through under an innocuous key would have passed it unnoticed.
+    """
+    for key in _keys(payload):
+        assert not any(t in key for t in FORBIDDEN), \
+            f"{key!r} is a field name that carries biometric material"
+    for s in _strings(payload):
+        assert not any(t in s for t in FORBIDDEN_IN_PROSE), \
+            f"biometric material appeared in a string value: {s[:80]!r}"
+    assert not _coordinate_arrays(payload), \
+        "a point set reached the reviewer screen"
+
 
 def test_review_packet_carries_no_biometric_material(client):
     gate_id = referred(client)
-    blob = json.dumps(packet(client, gate_id)).lower()
-    for term in FORBIDDEN:
-        assert term not in blob, (
-            f"{term!r} reached the reviewer screen; the console is meant to "
-            f"show the triggering signal only (context.md §11.8)")
+    assert_no_biometric_material(packet(client, gate_id))
 
 
 def test_queue_carries_no_biometric_material(client):
     referred(client)
-    blob = json.dumps(client.get("/gates?state=REVIEW").json()).lower()
-    for term in FORBIDDEN:
-        assert term not in blob
+    assert_no_biometric_material(client.get("/gates?state=REVIEW").json())
+
+
+def test_the_privacy_guard_catches_a_smuggled_point_set(client):
+    """The guard has to fail on the thing it exists to catch."""
+    gate_id = referred(client)
+    p = packet(client, gate_id)
+    p["checks"][0]["notes"] = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
+    with pytest.raises(AssertionError, match="point set"):
+        assert_no_biometric_material(p)
+
+
+def test_the_privacy_guard_catches_a_biometric_field_name(client):
+    gate_id = referred(client)
+    p = packet(client, gate_id)
+    p["checks"][0]["constellations"] = {}
+    with pytest.raises(AssertionError, match="biometric material"):
+        assert_no_biometric_material(p)
+
+
+def test_the_privacy_guard_allows_a_check_to_explain_itself(client):
+    """
+    "a printed photograph responds to coloured light" is what a reviewer needs
+    to read. A guard that forbids it trains people to delete the explanation.
+    """
+    gate_id = referred(client)
+    p = packet(client, gate_id)
+    p["checks"][0]["limitations"] = ["a printed photograph can be turned on cue"]
+    assert_no_biometric_material(p)
 
 
 # ── integrity ─────────────────────────────────────────────────────────────
@@ -412,3 +490,20 @@ def test_the_transition_is_attributed_to_a_human(client):
     last = signed[-1]
     assert last["to"] == str(GateState.SIGNED)
     assert last["actor"] == str(Actor.HUMAN)
+
+
+def test_the_packet_records_which_evidence_came_from_a_stand_in(client):
+    """
+    Read back out of the chain, not from the live reply. The console opens
+    gates long after the capture, and provenance that only existed in the
+    original response would be gone exactly when a reviewer needs it.
+    """
+    gate_id = referred(client, presence={**PASSING, "synthetic": True})
+    presence = next(c for c in packet(client, gate_id)["checks"]
+                    if c["name"] == "presence")
+    assert presence["synthetic"] is True
+
+
+def test_measured_evidence_is_not_flagged_as_a_stand_in(client):
+    gate_id = referred(client)
+    assert all(c["synthetic"] is False for c in packet(client, gate_id)["checks"])

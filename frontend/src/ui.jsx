@@ -21,6 +21,10 @@ export function Badge({ value, title }) {
     SIGNED: 'badge-signed',
     SEALED: 'badge-signed',
     'DID NOT RUN': 'badge-absent',
+    // Ran, but against a stand-in. Styled with the absent badge rather than
+    // pass or fail because what it shares with "did not run" is the thing
+    // that matters: no evidence about the person was produced.
+    'NOT EVIDENCE': 'badge-absent',
   }[key] ?? 'badge-idle'
   return <span className={`badge ${cls}`} title={title}>{key || '—'}</span>
 }

@@ -312,6 +312,14 @@ async def capture(gate_id: str,
         presence = presence_eval(records, spec, issued_at=issued_at).as_dict()
         authenticity = authenticity_eval(
             records[0]["scores"], authenticity_baseline()).as_dict()
+        # Marked at the point the provenance is known. The checks do not get
+        # told where their numbers came from — they measure what they are
+        # handed — so the flag is attached here, by the code that knows the
+        # sensor was a stand-in, rather than inferred later by a reader who
+        # would have to guess.
+        if any(r.get("synthetic") for r in records):
+            presence["synthetic"] = True
+            authenticity["synthetic"] = True
     else:
         presence = _sensor_absent(unavailable, len(frames))
         authenticity = None
@@ -390,7 +398,8 @@ def _check_summary(row: dict) -> dict:
             "score": float(row["score"]), "ran": bool(d.get("ran", True)),
             "passed": bool(d.get("passed", False)),
             "verdict": d.get("verdict"), "reason": d.get("reason", ""),
-            "limitations": d.get("limitations", [])}
+            "limitations": d.get("limitations", []),
+            "synthetic": bool(d.get("synthetic"))}
 
 
 def fusion_reasons(gate_id: str) -> list[str]:
@@ -950,6 +959,12 @@ def decide(body: FusionRequest) -> dict:
                 "ran": outcome["ran"], "passed": outcome["passed"],
                 "verdict": outcome["verdict"], "reason": outcome["reason"],
                 "limitations": outcome.get("limitations", []),
+                # Provenance belongs in the record, not just in the response.
+                # The reviewer console reads evidence back out of the chain, so
+                # a flag that lived only in the live reply would vanish the
+                # moment anyone opened the gate afterwards — which is precisely
+                # when it matters that these numbers came from a stand-in.
+                "synthetic": bool(outcome.get("synthetic")),
             })
 
         try:

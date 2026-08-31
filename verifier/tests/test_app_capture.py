@@ -218,11 +218,30 @@ def test_an_empty_frame_is_refused(client):
 
 # ── absence of a sensor is not a failure ──────────────────────────────────
 
-def test_unreachable_sensor_refers_to_a_human_rather_than_failing(client):
+@pytest.fixture()
+def dead_sensor(monkeypatch):
     """
-    In replay mode a live browser capture has no recorded fixture, so this is
-    the path the demo actually takes today. It must produce REVIEW: a FAIL
-    would accuse a person of something the system never examined.
+    A sensor that cannot be reached, stated rather than arranged.
+
+    These tests used to get here by letting replay miss its fixture, which
+    stopped working once the upload stand-in resolved for any filename. That
+    was the right fix, but it would have silently deleted the coverage: the
+    tests would still pass while no longer exercising an absent sensor at all.
+    """
+    import capture as capture_module
+
+    def unreachable(*a, **kw):
+        raise capture_module.SensorUnavailable("PerfectCorpError: connection refused")
+
+    # Patched on the capture module, not on app: the route imports `analyse`
+    # inside the handler, so it resolves the name afresh on every call and a
+    # patch applied to app would never be seen.
+    monkeypatch.setattr(capture_module, "analyse", unreachable)
+
+
+def test_unreachable_sensor_refers_to_a_human_rather_than_failing(client, dead_sensor):
+    """
+    A FAIL would accuse a person of something the system never examined.
     """
     gate_id, spec = challenged_gate(client)
     r = post_capture(client, gate_id, spec)
@@ -238,7 +257,7 @@ def test_unreachable_sensor_refers_to_a_human_rather_than_failing(client):
     assert presence["verdict"] != str(GateState.FAIL)
 
 
-def test_the_reason_names_the_cause(client):
+def test_the_reason_names_the_cause(client, dead_sensor):
     """
     "Check 1 could not run" with no cause leaves a reviewer unable to tell a
     missing credential from an attack.
@@ -432,7 +451,27 @@ def test_the_challenge_is_rederived_from_the_gates_nonce(client, monkeypatch):
     assert [f["colour"] for f in spec["frames"]] == expected
 
 
-def test_a_reviewer_is_not_shown_the_developer_runbook(client):
+@pytest.fixture()
+def missing_fixture(monkeypatch):
+    """
+    Replay with nothing recorded for this call.
+
+    The generic upload stand-in means an unseeded checkout is no longer the
+    way to reach this, so it is arranged deliberately. The wording of a
+    FixtureMissing is still what a reviewer would read if a deployment lost
+    its fixtures, which is the thing these two tests are about.
+    """
+    import capture as capture_module
+    import fixtures as fx
+
+    def unreachable(*a, **kw):
+        raise capture_module.SensorUnavailable(
+            f"FixtureMissing: {fx.FixtureMissing('file-upload', 'k').cause}")
+
+    monkeypatch.setattr(capture_module, "analyse", unreachable)
+
+
+def test_a_reviewer_is_not_shown_the_developer_runbook(client, missing_fixture):
     """
     The sentence explaining why a check could not run is read by someone
     deciding whether to authorise a payment. `make seed` is not actionable
@@ -447,10 +486,37 @@ def test_a_reviewer_is_not_shown_the_developer_runbook(client):
     assert "STRATUM_API_MODE" not in reason
 
 
-def test_the_reason_still_names_what_failed(client):
+def test_the_reason_still_names_what_failed(client, missing_fixture):
     gate_id, spec = challenged_gate(client)
     body = post_capture(client, gate_id, spec).json()
     reason = next(c for c in body["checks"] if c["name"] == "presence")["reason"]
     # Without the cause a reviewer cannot tell a lapsed credential from
     # somebody holding the sensor down on purpose.
     assert "FixtureMissing" in reason or "no recorded response" in reason
+
+
+def test_a_replayed_capture_is_marked_as_running_on_a_stand_in(client):
+    """
+    The demo path. Replay serves a seeded face, so the checks run and return
+    real numbers about a fabricated person; the packet has to say so or a
+    reviewer reads them as measurements of whoever was at the camera.
+    """
+    gate_id, spec = challenged_gate(client)
+    body = post_capture(client, gate_id, spec).json()
+    presence = next(c for c in body["checks"] if c["name"] == "presence")
+    assert presence["ran"] is True
+    assert presence["synthetic"] is True
+
+
+def test_a_replayed_capture_reaches_neither_pass_nor_fail(client):
+    gate_id, spec = challenged_gate(client)
+    body = post_capture(client, gate_id, spec).json()
+    assert body["verdict"] == str(GateState.REVIEW)
+    assert body["requires_human"] is True
+
+
+def test_the_packet_says_the_numbers_are_about_a_fixture(client):
+    gate_id, spec = challenged_gate(client)
+    body = post_capture(client, gate_id, spec).json()
+    assert any("stand-in" in r and "not about the person" in r
+               for r in body["reasons"])

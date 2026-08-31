@@ -27,9 +27,18 @@ import { Badge, Card, Chain, Hash, Mark, Spinner } from '../ui.jsx'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
-/** A check that never ran is not a check that failed — say so distinctly. */
+/**
+ * A check that never ran is not a check that failed — say so distinctly.
+ *
+ * A check that ran against a stand-in is a third thing again. It has a
+ * pass/fail internally, but that verdict is about a seeded fixture, so
+ * rendering it as FAIL puts the console in direct contradiction with the
+ * decision layer, which refuses to let such a result fail a gate. The
+ * reviewer would be reading an accusation the record does not make.
+ */
 function checkVerdict(check) {
   if (!check.ran) return 'DID NOT RUN'
+  if (check.synthetic) return 'NOT EVIDENCE'
   return check.verdict ?? (check.passed ? 'PASS' : 'FAIL')
 }
 
@@ -83,7 +92,10 @@ function Checks({ checks }) {
         <div className="mono dim">check {c.check_no}</div>
       </div>
       <div>
-        <Badge value={checkVerdict(c)} />
+        <Badge value={checkVerdict(c)}
+               title={c.synthetic
+                 ? 'ran against a seeded fixture, not the sensor'
+                 : undefined} />
         {c.reason && (
           <p className="muted" style={{ margin: '7px 0 0', fontSize: 13 }}>{c.reason}</p>
         )}
@@ -291,6 +303,33 @@ function Escalations({ events }) {
   )
 }
 
+/**
+ * Part of the evidence came from a seeded fixture rather than the sensor.
+ *
+ * Above the checks, because it changes how every number below it should be
+ * read. A reviewer who scrolls straight to a score sees a measurement; what
+ * is actually there is a measurement of a fabricated face. The gate can still
+ * be signed — a person may have other grounds — but not on this evidence.
+ */
+function StandIn({ checks }) {
+  const names = checks.filter((c) => c.synthetic).map((c) => c.name)
+  if (!names.length) return null
+  return (
+    <div className="alert" style={{ marginBottom: 18, borderColor: 'var(--amber)' }}>
+      <p style={{ margin: 0, fontWeight: 600, color: 'var(--amber)' }}>
+        {names.length === 1
+          ? `The ${names[0]} check ran against a stand-in, not the sensor.`
+          : `${names.length} checks ran against a stand-in, not the sensor.`}
+      </p>
+      <p className="small muted" style={{ margin: '8px 0 0' }}>
+        The numbers below are real, and they describe a seeded fixture rather
+        than whoever was at the camera. Treat them as evidence that the
+        pipeline ran, not as evidence about a person.
+      </p>
+    </div>
+  )
+}
+
 const Detail = React.forwardRef(function Detail(
   { packet, onResolve, onTampered, busy, error }, ref) {
   const [reviewer, setReviewer] = useState(
@@ -331,6 +370,7 @@ const Detail = React.forwardRef(function Detail(
       </div>
 
       {packet.escalations?.length > 0 && <Escalations events={packet.escalations} />}
+      {packet.checks?.length > 0 && <StandIn checks={packet.checks} />}
 
       <Card title="Why this needs a person">
         {packet.reasons?.length > 0 ? (
