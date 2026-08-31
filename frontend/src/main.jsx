@@ -5,11 +5,18 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import './theme.css'
 import { Card, Mark } from './ui.jsx'
 import Gate from './gate/Gate.jsx'
+import Agent from './agent/Agent.jsx'
 import Review from './review/Review.jsx'
 import Verify from './verify/Verify.jsx'
 import Dashboard from './dashboard/Dashboard.jsx'
 
 const ROUTES = [
+  {
+    to: '/agent',
+    name: 'Agent console',
+    line: 'Watch an agent with valid credentials try to sign its own work, and be refused on the record.',
+    state: 'live',
+  },
   {
     to: '/gate/demo',
     name: 'Gate',
@@ -86,6 +93,7 @@ createRoot(document.getElementById('root')).render(
   <BrowserRouter>
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/agent" element={<Agent />} />
       <Route path="/gate/:gateId" element={<Gate />} />
       <Route path="/review" element={<Review />} />
       <Route path="/verify" element={<Verify />} />

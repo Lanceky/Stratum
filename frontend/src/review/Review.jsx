@@ -61,6 +61,13 @@ function QueueItem({ gate, selected, onSelect }) {
       <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.45 }}>
         {gate.triggering_signal}
       </p>
+      {gate.escalations > 0 && (
+        <p className="small" style={{ margin: '8px 0 0', color: 'var(--red)' }}>
+          ⚠ {gate.escalations === 1
+            ? 'an agent tried to take a human-only step'
+            : `${gate.escalations} agent attempts at a human-only step`}
+        </p>
+      )}
     </button>
   )
 }
@@ -175,6 +182,46 @@ function Timeline({ events }) {
   )
 }
 
+/**
+ * A non-human reached for a step only a human may take.
+ *
+ * Above the fold and outside the timeline, because it changes what the ruling
+ * means. Everything else on this screen is a question about evidence quality —
+ * was the light good enough, is this a sibling. This is not that. It is the
+ * system reporting that something tried to skip the person now being asked to
+ * approve it, and a reviewer who scrolls past it is approving blind.
+ */
+function Escalations({ events }) {
+  return (
+    <div className="alert" style={{ marginBottom: 18 }}>
+      <p style={{ margin: 0, fontWeight: 600, color: 'var(--red)' }}>
+        {events.length === 1
+          ? 'An agent tried to take a human-only step on this gate.'
+          : `An agent made ${events.length} attempts at a human-only step on this gate.`}
+      </p>
+      <ul className="small" style={{ margin: '10px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
+        {events.map((e) => (
+          <li key={e.hash}>
+            <span className="mono">{e.actor}</span> reached for{' '}
+            <span className="mono">{e.to}</span> from{' '}
+            <span className="mono">{e.from}</span> — {e.reason}
+            <br />
+            <span className="dim">
+              {e.at ? new Date(e.at).toLocaleString() : ''}{' '}
+            </span>
+            <Hash value={e.hash} chars={10} />
+          </li>
+        ))}
+      </ul>
+      <p className="small muted" style={{ margin: '10px 0 0' }}>
+        It was refused, and the gate never moved. The attempt is recorded because a
+        refusal nobody can read afterwards is indistinguishable from one that never
+        happened.
+      </p>
+    </div>
+  )
+}
+
 const Detail = React.forwardRef(function Detail({ packet, onResolve, busy, error }, ref) {
   const [reviewer, setReviewer] = useState(
     () => localStorage.getItem('stratum.reviewer') ?? ''
@@ -212,6 +259,8 @@ const Detail = React.forwardRef(function Detail({ packet, onResolve, busy, error
         </div>
         <Hash value={packet.chain?.head} chars={10} />
       </div>
+
+      {packet.escalations?.length > 0 && <Escalations events={packet.escalations} />}
 
       <Card title="Why this needs a person">
         {packet.reasons?.length > 0 ? (
