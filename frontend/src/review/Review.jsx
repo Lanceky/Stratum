@@ -311,6 +311,20 @@ function Escalations({ events }) {
  * is actually there is a measurement of a fabricated face. The gate can still
  * be signed — a person may have other grounds — but not on this evidence.
  */
+function Stale({ reason }) {
+  return (
+    <div className="alert" style={{ marginBottom: 18, borderColor: 'var(--amber)' }}>
+      <p style={{ margin: 0, fontWeight: 600, color: 'var(--amber)' }}>
+        This packet may be out of date — {reason}.
+      </p>
+      <p className="small muted" style={{ margin: '8px 0 0' }}>
+        What is on screen is the last copy that loaded successfully. The gate
+        may have expired or been ruled on since. Reload before signing.
+      </p>
+    </div>
+  )
+}
+
 function StandIn({ checks }) {
   const names = checks.filter((c) => c.synthetic).map((c) => c.name)
   if (!names.length) return null
@@ -331,7 +345,7 @@ function StandIn({ checks }) {
 }
 
 const Detail = React.forwardRef(function Detail(
-  { packet, onResolve, onTampered, busy, error }, ref) {
+  { packet, onResolve, onTampered, busy, error, staleReason }, ref) {
   const [reviewer, setReviewer] = useState(
     () => localStorage.getItem('stratum.reviewer') ?? ''
   )
@@ -350,7 +364,10 @@ const Detail = React.forwardRef(function Detail(
   // symmetric: authorising on a history that cannot be trusted is the
   // dangerous act, while refusing is the safe response to not knowing.
   const broken = packet.chain && packet.chain.ok === false
-  const canApprove = named && !stale && !busy && !broken
+  // A packet we could not re-confirm is treated the same way as a chain we
+  // cannot trust: it blocks approval, never rejection. Refusing is the safe
+  // response to not knowing; authorising on it is the dangerous one.
+  const canApprove = named && !stale && !busy && !broken && !staleReason
   const canReject = named && !stale && !busy
 
   return (
@@ -369,6 +386,7 @@ const Detail = React.forwardRef(function Detail(
         <Hash value={packet.chain?.head} chars={10} />
       </div>
 
+      {staleReason && <Stale reason={staleReason} />}
       {packet.escalations?.length > 0 && <Escalations events={packet.escalations} />}
       {packet.checks?.length > 0 && <StandIn checks={packet.checks} />}
 
@@ -494,8 +512,13 @@ export default function Review() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [queueError, setQueueError] = useState(null)
+  const [stale, setStale] = useState(null)
   const [refresh, setRefresh] = useState(0)
   const detailRef = useRef(null)
+  // A ref, not the state value, so the polling interval does not have to be
+  // torn down and rebuilt every time a ruling starts or finishes.
+  const busyRef = useRef(false)
+  useEffect(() => { busyRef.current = busy }, [busy])
 
   const loadQueue = useCallback(async () => {
     try {
@@ -521,14 +544,44 @@ export default function Review() {
   }, [loadQueue])
 
   useEffect(() => {
-    if (!selected) { setPacket(null); return }
+    if (!selected) { setPacket(null); setStale(null); return }
     let live = true
+    let loaded = false
+
+    const load = () => {
+      // A ruling in flight is about to change the thing being polled. Letting
+      // a poll land in the middle overwrites the pane with a packet that is
+      // already out of date by the time it arrives.
+      if (busyRef.current) return
+      fetch(`${API}/gates/${selected}/review`)
+        .then((r) => (r.ok ? r.json()
+          : Promise.reject(new Error(`could not load gate (${r.status})`))))
+        .then((p) => {
+          if (!live) return
+          setPacket(p)
+          setStale(null)
+          loaded = true
+        })
+        .catch((e) => {
+          if (!live) return
+          // Blank the pane only if nothing ever loaded into it. A dropped
+          // poll must not erase a packet a reviewer is part-way through
+          // reading — and must not silently leave them reading it either.
+          if (loaded) setStale(e.message)
+          else { setError(e.message); setPacket(null) }
+        })
+    }
+
     setError(null)
-    fetch(`${API}/gates/${selected}/review`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`could not load gate (${r.status})`))))
-      .then((p) => { if (live) setPacket(p) })
-      .catch((e) => { if (live) { setError(e.message); setPacket(null) } })
-    return () => { live = false }
+    setStale(null)
+    load()
+    // The queue refreshes on its own timer while the open gate did not, so a
+    // detail pane opened once sat unchanged indefinitely. On a screen whose
+    // whole claim is "this is what was decided", showing a packet from some
+    // minutes ago is the one thing it must not do: the gate can expire, or
+    // another reviewer can rule on it, and this pane would never say so.
+    const t = setInterval(load, 15000)
+    return () => { live = false; clearInterval(t) }
   }, [selected, refresh])
 
   // On a narrow screen the panes stack, so the detail opens below the fold and
@@ -604,7 +657,7 @@ export default function Review() {
       {packet
         ? <Detail ref={detailRef} packet={packet} onResolve={resolve}
                   onTampered={() => setRefresh((n) => n + 1)}
-                  busy={busy} error={error} />
+                  busy={busy} error={error} staleReason={stale} />
         : (
           <section className="pane" style={{ display: 'grid', placeItems: 'center', padding: 40 }}>
             <p className="muted" style={{ maxWidth: 340, textAlign: 'center' }}>
