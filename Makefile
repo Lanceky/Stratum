@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help smoke seed capture gate-demo separation presence authenticity binding schema setup dev verifier frontend replay review-seed benchmark units test clean
+.PHONY: help smoke seed nutrient capture gate-demo separation presence authenticity binding schema setup dev verifier frontend replay review-seed benchmark units test clean
 
 help: ## Show this help
 	@echo "STRATUM — make targets"
@@ -22,6 +22,9 @@ smoke: ## Verify every sponsor credential (Step 1 DoD)
 
 seed: ## Generate synthetic fixtures so the pipeline runs before credentials land
 	@cd verifier && .venv/bin/python seed_fixtures.py
+
+nutrient: ## Probe the Nutrient credential via the free /analyze_build endpoint
+	@bash scripts/smoke/nutrient.sh
 
 capture: ## Run the capture pipeline. IMG=path/to/face.jpg [MODE=auto to record]
 	@cd verifier && STRATUM_API_MODE=$${MODE:-replay} .venv/bin/python pipeline.py \
