@@ -41,6 +41,29 @@ def test_health_still_reports_replay_mode(client):
     assert client.get("/health").json()["api_mode"] == "replay"
 
 
+def test_health_counts_gates_by_state(client, gate_id):
+    """
+    The landing page reads these numbers. It previously derived "gates opened"
+    from a listing endpoint that defaults to the REVIEW queue, so the total and
+    the review count were the same number under two names.
+    """
+    gates = client.get("/health").json()["gates"]
+    assert gates["total"] >= 1
+    assert gates["by_state"]["REQUESTED"] >= 1
+    assert gates["awaiting_review"] == gates["by_state"].get("REVIEW", 0)
+
+
+def test_health_total_follows_a_transition(client, gate_id):
+    """A move changes the shape of the census without changing its size."""
+    before = client.get("/health").json()["gates"]
+    _move(client, gate_id, "CHALLENGED", "agent")
+    after = client.get("/health").json()["gates"]
+
+    assert after["total"] == before["total"]
+    assert after["by_state"]["CHALLENGED"] == before["by_state"].get("CHALLENGED", 0) + 1
+    assert after["by_state"].get("REQUESTED", 0) == before["by_state"]["REQUESTED"] - 1
+
+
 def test_gate_starts_in_requested(client, gate_id):
     assert client.get(f"/gates/{gate_id}").json()["state"] == "REQUESTED"
 

@@ -51,14 +51,21 @@ class HealthResponse(BaseModel):
     status: str
     api_mode: str
     units: dict
+    gates: dict
 
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
+    census = store.census()
     return HealthResponse(
         status="ok",
         api_mode=os.getenv("STRATUM_API_MODE", "replay"),
         units=budget_status(),
+        # Counted by state rather than totalled, so a caller can see the shape
+        # of the queue and not just its size. `total` is derived here so the
+        # landing page cannot disagree with the audit trail about it.
+        gates={"total": sum(census.values()), "by_state": census,
+               "awaiting_review": census.get(str(GateState.REVIEW), 0)},
     )
 
 
