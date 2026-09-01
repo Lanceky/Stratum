@@ -389,6 +389,21 @@ class Store:
         return dict(r) if r else None
 
     @_locked
+    def claim_for_gate(self, gate_id: str) -> dict | None:
+        """
+        The claim this gate authorised, if it authorised one.
+
+        Most gates have none, so the certificate asks rather than assumes. A
+        claim block rendered from an empty row would print a wallet field with
+        nothing in it, which reads as a wallet that failed rather than a gate
+        that was never about one.
+        """
+        r = self.db.execute(
+            "SELECT * FROM claims WHERE gate_id = ? ORDER BY rowid DESC LIMIT 1",
+            (gate_id,)).fetchone()
+        return dict(r) if r else None
+
+    @_locked
     def add_claim(self, gate_id: str, enrolment_id: str, context: str,
                   nullifier: str, address: str, verdict: str,
                   decided_by: str, signature: str | None = None) -> dict:

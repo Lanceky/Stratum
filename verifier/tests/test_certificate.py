@@ -309,3 +309,49 @@ def test_a_certificate_is_never_left_on_disk_as_a_fixture(monkeypatch):
 
     certificate.seal(att())
     assert seen == {"build": False, "sign": False}
+
+
+# ── the claim block ───────────────────────────────────────────────────────
+CLAIM = {"context": "airdrop-q1", "address": "0x" + "a1" * 20,
+         "nullifier": "0x" + "9f" * 32, "decided_by": "reviewer:r-7",
+         "verdict": "PASS", "issuer": "0x" + "b2" * 20,
+         "scheme": "EIP-191 personal_sign"}
+
+
+def test_a_gate_with_no_claim_prints_no_claim_block():
+    """
+    Most gates never authorised one. An empty wallet field reads as a wallet
+    that failed rather than a gate that was never about one.
+    """
+    assert "Nullifier" not in certificate.render(att())
+
+
+def test_the_claim_block_names_the_wallet_and_the_issuer():
+    html = certificate.render(att(claim=CLAIM))
+    assert CLAIM["address"] in html
+    assert CLAIM["issuer"] in html, "a signature is unverifiable without it"
+
+
+def test_the_certificate_does_not_oversell_the_nullifier():
+    """
+    A reader who takes it for an anonymous token would assume more privacy
+    than the design provides. The document says so rather than leaving the
+    reassurance implied.
+    """
+    html = certificate.render(att(claim=CLAIM))
+    assert "not" in html and "zero-knowledge" in html
+
+
+def test_an_unsigned_claim_does_not_name_an_issuer():
+    """
+    Naming a key that never signed would invite a verifier to check
+    `ecrecover` against it and read the mismatch as a forgery.
+    """
+    unsigned = dict(CLAIM, issuer=None, scheme=None)
+    html = certificate.render(att(claim=unsigned))
+    assert "not signed" in html
+    assert CLAIM["issuer"] not in html
+
+
+def test_the_claim_block_says_who_authorised_it():
+    assert "reviewer:r-7" in certificate.render(att(claim=CLAIM))

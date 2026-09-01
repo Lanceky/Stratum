@@ -579,6 +579,30 @@ def submit_review(gate_id: str, body: ReviewDecision) -> dict:
 def audit(gate_id: str) -> dict:
     return {"gate_id": gate_id, "events": store.chain(gate_id)}
 
+def _claim_facts(gate_id: str) -> dict | None:
+    """
+    The claim this gate authorised, in the shape the certificate renders.
+
+    `issuer` is read from the key in force now, not stored with the claim. If
+    the key has since been rotated the certificate would name an address that
+    cannot verify the signature it prints — so it is only reported when the
+    claim was actually signed, and a reader checking `ecrecover` against a
+    rotated key gets a mismatch they can investigate rather than a silent
+    reassurance.
+    """
+    row = store.claim_for_gate(gate_id)
+    if row is None:
+        return None
+    signed = bool(row.get("signature"))
+    return {
+        "context": row["context"], "address": row["address"],
+        "nullifier": row["nullifier"], "decided_by": row["decided_by"],
+        "verdict": row["verdict"],
+        "issuer": claim_mod.issuer_address() if signed else None,
+        "scheme": "EIP-191 personal_sign" if signed else None,
+    }
+
+
 @app.get("/gates/{gate_id}/attestation.pdf")
 def attestation_pdf(gate_id: str,
                     jurisdiction: str = "UNSPECIFIED",
@@ -626,6 +650,7 @@ def attestation_pdf(gate_id: str,
         # the certificate must report the decision in force rather than the
         # first one anyone recorded, whichever way that changes.
         reviewer=reviews[-1] if reviews else None,
+        claim=_claim_facts(gate_id),
         chain_intact=store.verify_chain(gate_id).ok,
     )
 

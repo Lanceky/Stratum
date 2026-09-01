@@ -47,10 +47,62 @@ def scalars(att):
 
 # ── what the certificate refuses to claim ─────────────────────────────────
 def test_limits_of_every_check_that_ran_are_carried():
+    """
+    Driven off the evidence rather than off CHECK_LIMITS, so a check the gate
+    never ran does not have to have its caveat printed. Iterating the whole
+    table asserted the opposite — that a certificate must disclose limits of
+    work it did not do.
+    """
     att = build(gate(), events(), evidence())
     text = " ".join(att.unestablished())
+    for check in att.checks:
+        assert CHECK_LIMITS[check["check_no"]] in text
+
+
+def test_a_check_that_ran_cannot_have_its_caveat_dropped():
+    """
+    The other half, and the one that matters: every check with a known limit
+    must have that limit stated when it runs. Without this, adding a check and
+    forgetting its caveat produces a certificate that overclaims silently.
+    """
+    ev = evidence() + [{"check_no": 4, "score": 1.0, "detail": json.dumps(
+        {"passed": True, "ran": True, "verdict": "UNIQUE", "roster_size": 400,
+         "comparisons_run": 400, "comparisons_skipped": 0,
+         "false_match": {"across_this_sweep": 0.6}})}]
+    text = " ".join(build(gate(), events(), ev).unestablished())
     for limit in CHECK_LIMITS.values():
         assert limit in text
+
+
+def test_the_uniqueness_caveat_states_the_odds_for_this_roster():
+    """
+    Check 4's limit is a function of roster size, so a fixed sentence would be
+    wrong for every roster but one. A reader deciding whether to refuse
+    someone's allocation should see the chance they are refusing the wrong
+    person.
+    """
+    ev = evidence() + [{"check_no": 4, "score": 1.0, "detail": json.dumps(
+        {"passed": True, "ran": True, "verdict": "UNIQUE", "roster_size": 400,
+         "comparisons_run": 400, "comparisons_skipped": 0,
+         "false_match": {"across_this_sweep": 0.6}})}]
+    text = " ".join(build(gate(), events(), ev).unestablished())
+    assert "400 of 400" in text
+    assert "60.00%" in text, "stated as a percentage, not a bare probability"
+
+
+def test_comparisons_that_could_not_run_are_named():
+    """
+    A roster of 400 where 60 could not be compared has not been swept.
+    Reporting only the 340 describes a uniqueness never established over the
+    rest.
+    """
+    ev = evidence() + [{"check_no": 4, "score": 1.0, "detail": json.dumps(
+        {"passed": True, "ran": True, "verdict": "UNIQUE", "roster_size": 400,
+         "comparisons_run": 340, "comparisons_skipped": 60,
+         "false_match": {"across_this_sweep": 0.5}})}]
+    text = " ".join(build(gate(), events(), ev).unestablished())
+    assert "340 of 400" in text
+    assert "60 that could not be compared" in text
 
 
 def test_a_check_that_did_not_run_is_disclosed():

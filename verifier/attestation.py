@@ -132,7 +132,42 @@ CHECK_LIMITS = {
     3: "Identity binding cannot separate a close relative from a poorly "
        "captured genuine photograph: the two populations overlap on measured "
        "data. Cases in that band are referred to a human rather than decided.",
+    4: "Uniqueness was established by comparing this capture against a roster, "
+       "so its reliability falls as the roster grows: every additional "
+       "enrolment is another chance for two different people to be mistaken "
+       "for one. The figure below is computed for the roster actually swept, "
+       "and no claim is made beyond it.",
 }
+
+
+def _sweep_note(check: dict) -> str:
+    """
+    The part of check 4's caveat that is specific to this sweep.
+
+    Stated as a percentage against a named roster size rather than left as a
+    bare probability, because "0.0092" on a compliance document is a number
+    nobody acts on. A reader deciding whether to refuse someone's allocation
+    should see the chance they are refusing the wrong person.
+
+    Skipped comparisons are named separately. A roster of 500 where 60 could
+    not be compared has not been swept; reporting only the 440 would describe
+    a uniqueness that was never established over the rest.
+    """
+    scope = check.get("scope") or {}
+    if not scope.get("roster_size"):
+        return ""
+    fm = scope.get("false_match") or {}
+    p = fm.get("across_this_sweep")
+    bits = [f" This sweep compared the capture against "
+            f"{scope['comparisons_run']} of {scope['roster_size']} enrolments"]
+    skipped = scope.get("comparisons_skipped") or 0
+    if skipped:
+        bits.append(f", leaving {skipped} that could not be compared and over "
+                    f"which nothing is asserted")
+    if isinstance(p, (int, float)):
+        bits.append(f". The probability that a match at this size is a "
+                    f"coincidence rather than the same person is {p * 100:.2f}%")
+    return "".join(bits) + "."
 
 
 @dataclass
@@ -148,6 +183,7 @@ class Attestation:
     timeline: list[dict] = field(default_factory=list)
     checks: list[dict] = field(default_factory=list)
     reviewer: dict | None = None
+    claim: dict | None = None
     chain_head: str = ""
     chain_intact: bool = True
     issued_at: str = ""
@@ -172,7 +208,7 @@ class Attestation:
                     f"produced no evidence. Its absence is not a negative "
                     f"finding and must not be read as one.")
             elif c["check_no"] in CHECK_LIMITS:
-                out.append(CHECK_LIMITS[c["check_no"]])
+                out.append(CHECK_LIMITS[c["check_no"]] + _sweep_note(c))
 
         if self.outcome == "REVIEW":
             out.append(
@@ -289,6 +325,7 @@ def build(gate: dict, events: list[dict], evidence: list[dict], *,
           jurisdiction: str | Jurisdiction = Jurisdiction.UNSPECIFIED,
           risk_tier: str | RiskTier = RiskTier.STANDARD,
           reviewer: dict | None = None,
+          claim: dict | None = None,
           chain_intact: bool = True) -> Attestation:
     """
     Collapse a gate and its history into the facts a certificate may assert.
@@ -297,7 +334,8 @@ def build(gate: dict, events: list[dict], evidence: list[dict], *,
     and was stopped is the single most interesting event an auditor can find,
     and a certificate that quietly drops it is describing a different gate.
     """
-    names = {1: "presence", 2: "authenticity", 3: "identity binding"}
+    names = {1: "presence", 2: "authenticity", 3: "identity binding",
+             4: "uniqueness"}
     checks = []
     for row in sorted(evidence, key=lambda r: r.get("check_no", 0)):
         detail = row.get("detail")
@@ -308,7 +346,7 @@ def build(gate: dict, events: list[dict], evidence: list[dict], *,
                 detail = {}
         detail = detail or {}
         no = int(row.get("check_no", 0))
-        checks.append({
+        entry = {
             "check_no": no,
             "name": names.get(no, f"check {no}"),
             "score": float(row.get("score") or 0.0),
@@ -316,7 +354,19 @@ def build(gate: dict, events: list[dict], evidence: list[dict], *,
             "verdict": detail.get("verdict") or (
                 "satisfied" if detail.get("passed") else "not satisfied"),
             "reason": detail.get("reason", ""),
-        })
+        }
+        # Check 4's limit is not a constant — it is a function of how many
+        # people were swept. Carried through so the certificate can state the
+        # figure for this sweep instead of a generic caveat that would be
+        # wrong for every roster but one.
+        if no == 4:
+            entry["scope"] = {
+                "roster_size": detail.get("roster_size"),
+                "comparisons_run": detail.get("comparisons_run"),
+                "comparisons_skipped": detail.get("comparisons_skipped"),
+                "false_match": detail.get("false_match") or {},
+            }
+        checks.append(entry)
 
     timeline = [{
         "at": e.get("ts") or e.get("created_at", ""),
@@ -334,6 +384,7 @@ def build(gate: dict, events: list[dict], evidence: list[dict], *,
         timeline=timeline,
         checks=checks,
         reviewer=reviewer,
+        claim=claim,
         chain_head=(events[-1].get("hash", "") if events else ""),
         gate_state=str(gate.get("state", "")),
         chain_intact=chain_intact,

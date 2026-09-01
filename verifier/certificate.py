@@ -204,6 +204,46 @@ def _reviewer_block(att: Attestation) -> str:
            if notes else ""))
 
 
+def _claim_block(att: Attestation) -> str:
+    """
+    The on-chain half of the record, for gates that authorised a claim.
+
+    The wallet and the nullifier are both printed, and the difference between
+    them is stated. A reader who takes the nullifier for an anonymous token
+    would assume more privacy than the design provides: the issuer can link it
+    back to the enrolment, and this document says so rather than leaving the
+    reassurance implied.
+
+    The issuing key is named because the signature is worthless without it. A
+    verifier checking `ecrecover` against the wrong address gets a mismatch and
+    concludes the claim is forged.
+    """
+    c = att.claim or {}
+    if not c:
+        return ""
+    return (
+        "<h2>Claim</h2>"
+        '<p class="finding">This gate authorised one claim by one person in '
+        "one campaign. It does not attest to the wallet's ownership, funding "
+        "or history — only that a person who had not already claimed here "
+        "presented themselves, and that the outcome above is what a relying "
+        "contract was told.</p>"
+        '<table class="kv">'
+        + _rows([("Campaign", str(c.get("context", "") or "—")),
+                 ("Wallet", str(c.get("address", "") or "—")),
+                 ("Nullifier", str(c.get("nullifier", "") or "—")),
+                 ("Signed by", str(c.get("issuer", "") or "not signed")),
+                 ("Signature scheme", str(c.get("scheme", "") or "—")),
+                 ("Authorised by", str(c.get("decided_by", "") or "—"))])
+        + "</table>"
+        '<p class="finding">The nullifier is what stops the same person '
+        "claiming twice under a second wallet. It is derived from the "
+        "enrolment and the campaign together, so it differs across campaigns "
+        "and cannot be used to follow someone between them. It is not "
+        "zero-knowledge: the issuer holds the secret it was derived with and "
+        "can link it back.</p>")
+
+
 def _chain_alarm(att: Attestation) -> str:
     """
     A broken chain is stated before the outcome, not after it.
@@ -268,6 +308,7 @@ def render(att: Attestation) -> str:
             f"request.</p>"]
 
     parts.append(_reviewer_block(att))
+    parts.append(_claim_block(att))
 
     parts += [
         "<h2>What this certificate does not establish</h2>",
