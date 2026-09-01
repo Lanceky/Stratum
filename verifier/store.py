@@ -346,3 +346,69 @@ class Store:
             "payload": ledger.canonical_json(payload or {}),
             "agent_session_id": agent_session_id,
         })
+
+    # ── enrolments and claims ─────────────────────────────────────────────
+    @_locked
+    def create_enrolment(self, tenant_id: str, subject_ref: str,
+                         identity_vector: dict, context: str | None = None) -> dict:
+        """
+        Put a person on a roster.
+
+        `context` rides in subject_ref rather than getting a column of its own:
+        the roster is per-campaign, and a person enrolled for one airdrop is
+        not thereby on the roster for another. Prefixing keeps that scoping in
+        one place and keeps the Xano schema unchanged.
+        """
+        ref = f"{context}:{subject_ref}" if context else subject_ref
+        return self._insert("enrolments", {
+            "tenant_id": tenant_id, "subject_ref": ref,
+            "identity_vector": ledger.canonical_json(identity_vector),
+            "enrolled_at": _now(),
+        })
+
+    @_locked
+    def roster(self, context: str, limit: int = 5000) -> list[dict]:
+        """
+        Every enrolment a claim in this context must be swept against.
+
+        Ordered oldest first so the sweep is deterministic: two runs over the
+        same roster should name the same nearest enrolment, or a reviewer
+        cannot reproduce what they were shown.
+        """
+        rows = self.db.execute(
+            "SELECT * FROM enrolments WHERE subject_ref LIKE ? "
+            "ORDER BY enrolled_at ASC, rowid ASC LIMIT ?",
+            (f"{context}:%", limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    @_locked
+    def claim_for(self, context: str, nullifier: str) -> dict | None:
+        r = self.db.execute(
+            "SELECT * FROM claims WHERE context = ? AND nullifier = ?",
+            (context, nullifier)).fetchone()
+        return dict(r) if r else None
+
+    @_locked
+    def add_claim(self, gate_id: str, enrolment_id: str, context: str,
+                  nullifier: str, address: str, verdict: str,
+                  decided_by: str, signature: str | None = None) -> dict:
+        """
+        Record a settled claim.
+
+        The unique index on (context, nullifier) is what actually stops a
+        second claim, not the lookup a caller may have done first — under
+        concurrency that lookup is a suggestion. sqlite3.IntegrityError is
+        allowed to propagate for the same reason: swallowing it here would turn
+        a refused double-claim into a silent success.
+        """
+        row = self._insert("claims", {
+            "gate_id": gate_id, "enrolment_id": enrolment_id,
+            "context": context, "nullifier": nullifier, "address": address,
+            "verdict": verdict, "decided_by": decided_by, "signature": signature,
+        })
+        self.audit(gate_id, "claim", {
+            "context": context, "nullifier": nullifier, "address": address,
+            "verdict": verdict, "decided_by": decided_by,
+            "signed": signature is not None,
+        })
+        return row

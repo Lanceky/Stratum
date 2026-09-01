@@ -17,15 +17,15 @@ from store import Store  # noqa: E402
 
 REQUIRED_TABLES = {
     "tenants", "enrolments", "workflows", "gates", "captures",
-    "evidence", "reviews", "attestations", "audit_events",
+    "evidence", "reviews", "attestations", "audit_events", "claims",
 }
 
 
-def test_all_nine_tables_are_defined():
+def test_every_table_is_defined():
     assert set(schema.TABLES) == REQUIRED_TABLES
 
 
-def test_all_nine_tables_are_created():
+def test_every_table_is_created():
     s = Store()
     rows = s.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     assert REQUIRED_TABLES <= {r["name"] for r in rows}

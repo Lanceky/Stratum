@@ -123,6 +123,22 @@ TABLES: dict[str, list[Column]] = {
         Column("notes", "text"),
         _created(),
     ],
+    "claims": [
+        _id(),
+        Column("gate_id", "uuid", null=False, ref="gates"),
+        Column("enrolment_id", "uuid", null=False, ref="enrolments"),
+        Column("context", "text", null=False,
+               doc="campaign identifier; the nullifier's domain separator"),
+        # Not the enrolment id, and not reversible to it. See claim.py.
+        Column("nullifier", "text", null=False,
+               doc="HMAC(enrolment, context) — one human, one claim, per context"),
+        Column("address", "text", null=False, doc="the wallet the claim binds to"),
+        Column("verdict", "text", null=False, doc="UNIQUE | DUPLICATE | REVIEW"),
+        Column("decided_by", "text", null=False,
+               doc="machine, or the reviewer who settled it"),
+        Column("signature", "text", doc="EIP-191; absent when no signing key is set"),
+        _created(),
+    ],
     "attestations": [
         _id(),
         Column("gate_id", "uuid", null=False, ref="gates"),
@@ -148,6 +164,18 @@ TABLES: dict[str, list[Column]] = {
 APPEND_ONLY = ["audit_events"]
 
 APPEND_ONLY_OPS = ("UPDATE", "DELETE")
+
+# Constraints the database enforces itself, rather than trusting every caller
+# to check first. The claims one is the Sybil guard: a uniqueness rule that
+# lives only in application code is one concurrent request away from admitting
+# the second claim it exists to refuse, and this is exactly the kind of race a
+# rewarded airdrop attracts.
+#
+# Scoped to (context, nullifier) and not to nullifier alone, because the same
+# person claiming in a different campaign is a different, legitimate claim.
+UNIQUE_INDEXES: dict[str, list[tuple[str, ...]]] = {
+    "claims": [("context", "nullifier")],
+}
 
 
 def trigger_name(table: str, op: str) -> str:
@@ -178,6 +206,12 @@ def create_sql() -> list[str]:
                 stmts.append(
                     f"CREATE INDEX IF NOT EXISTS ix_{table}_{c.name} ON {table}({c.name})")
 
+    for table, indexes in UNIQUE_INDEXES.items():
+        for cols_ in indexes:
+            name = f"ux_{table}_{'_'.join(cols_)}"
+            stmts.append(f"CREATE UNIQUE INDEX IF NOT EXISTS {name} "
+                         f"ON {table}({', '.join(cols_)})")
+
     for table in APPEND_ONLY:
         for op in APPEND_ONLY_OPS:
             stmts.append(trigger_sql(table, op))
@@ -191,6 +225,7 @@ def xano_export() -> dict:
             {
                 "name": table,
                 "append_only": table in APPEND_ONLY,
+                "unique": [list(c) for c in UNIQUE_INDEXES.get(table, [])],
                 "fields": [
                     {"name": c.name, "type": c.type, "nullable": c.null,
                      "primary": c.pk, "references": c.ref, "description": c.doc}
