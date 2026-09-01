@@ -103,8 +103,25 @@ def create_gate(body: GateCreate) -> dict:
                              body.challenge_spec, body.ttl_s)
 
 
+def _demo_tenancy() -> str:
+    """
+    The demo workflow, created once.
+
+    Extracted so the claim routes can reach a tenant without calling
+    `demo_gate` for its side effect — which opened a gate nobody asked for and
+    left it in the census as a phantom authorisation.
+    """
+    global _demo_workflow
+    if _demo_workflow is None:
+        tenant = store.create_tenant("demo.stratum.local", "demo-no-auth")
+        _demo_workflow = store.create_workflow(
+            tenant["id"], "wire_transfer_approval",
+            {"note": "demo workflow — not a real authorisation"})["id"]
+    return _demo_workflow
+
+
 @app.post("/demo/gate", status_code=201)
-def demo_gate(ttl_s: int = 600) -> dict:
+def demo_gate(ttl_s: int = 600, mode: str = str(GateMode.AUTHORISE_ACTION)) -> dict:
     """
     A gate anyone can open, for the demo at /gate/demo.
 
@@ -117,20 +134,24 @@ def demo_gate(ttl_s: int = 600) -> dict:
     the demo affordance is visible in the route list and cannot be reached by
     accident from the production path.
 
+    `mode` is validated against the enum rather than passed through. A gate
+    opened in a mode that does not exist would carry a requirement set nothing
+    can satisfy, and the caller would read the resulting refusal as a bug.
+
     Only the fields a browser needs are returned. `/gates` hands back the whole
     row including the nonce, which is defensible there because the caller is
     the credentialed agent that owns the gate — but this route is open to
     anyone, and handing the challenge secret to the client would undo the
     reason `/challenge` accepts a gate_id in the first place.
     """
-    global _demo_workflow
-    if _demo_workflow is None:
-        tenant = store.create_tenant("demo.stratum.local", "demo-no-auth")
-        _demo_workflow = store.create_workflow(
-            tenant["id"], "wire_transfer_approval",
-            {"note": "demo workflow — not a real authorisation"})["id"]
-    gate = store.create_gate(_demo_workflow, GateMode.AUTHORISE_ACTION,
-                             None, ttl_s)
+    try:
+        gate_mode = GateMode(mode)
+    except ValueError as exc:
+        raise HTTPException(
+            422, f"{mode!r} is not a gate mode. Known modes: "
+                 f"{', '.join(m.value for m in GateMode)}") from exc
+
+    gate = store.create_gate(_demo_tenancy(), gate_mode, None, ttl_s)
     return {k: gate[k] for k in ("id", "mode", "state", "expires_at", "created_at")}
 
 
@@ -1125,11 +1146,8 @@ class ClaimRequest(BaseModel):
 
 def _tenant() -> str:
     """The demo tenant. Claims are a demo path until real tenancy exists."""
-    global _demo_workflow
-    if _demo_workflow is None:
-        demo_gate(60)
-    row = store.db.execute("SELECT id FROM tenants LIMIT 1").fetchone()
-    return row["id"]
+    workflow = store.get("workflows", _demo_tenancy())
+    return workflow["tenant_id"]
 
 
 @app.post("/claims/enrol", status_code=201)
@@ -1284,9 +1302,7 @@ def claim_signature(gate_id: str, body: SignatureRequest) -> dict:
 
     events = store.chain(gate_id)
     verdict = attestation.outcome_of(gate, events)
-
-    reviews = store.reviews_for(gate_id)
-    decided_by = f"reviewer:{reviews[-1]['reviewer_id']}" if reviews else "machine"
+    decided_by = attestation.authority_of(events, store.reviews_for(gate_id))
 
     evidence = [e for e in store.evidence_for(gate_id) if int(e["check_no"]) == 4]
     detail = json.loads(evidence[-1]["detail"]) if evidence else {}

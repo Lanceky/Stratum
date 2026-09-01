@@ -218,6 +218,42 @@ def outcome_of(gate: dict, events: list[dict]) -> str:
     return state
 
 
+def authority_of(events: list[dict], reviews: list[dict] | None = None) -> str:
+    """
+    Who actually authorised this — read from the chain, not from the gate row.
+
+    A relying party that sees only "PASS" cannot tell an automatic decision
+    from one a named person settled, and that distinction is the entire claim
+    STRATUM makes. It is worth more than the verdict: an approval no human
+    touched is exactly what an agentic workflow produces on its own.
+
+    Three answers, in descending order of what they establish:
+
+      `reviewer:<id>`  a named person was shown the evidence and ruled on it.
+      `human`          a person moved the gate into SIGNED. The state machine
+                       admits no `agent` on either route into SIGNED, so this
+                       is structural rather than a matter of trust — but no
+                       deliberation was recorded, so they are not named.
+      `machine`        nothing here was authorised by a person.
+
+    `machine` is the default because the failure of guessing wrong runs one
+    way. Reporting a machine decision as human-approved manufactures an
+    authorisation; the reverse merely understates one.
+    """
+    for review in reversed(reviews or []):
+        if review.get("reviewer_id"):
+            return f"reviewer:{review['reviewer_id']}"
+    for event in reversed(events or []):
+        p = _payload(event)
+        if event.get("type") == "review" and p.get("reviewer_id"):
+            return f"reviewer:{p['reviewer_id']}"
+        if (event.get("type") == "transition"
+                and str(p.get("to")) == "SIGNED"
+                and str(p.get("actor")) == "human"):
+            return "human"
+    return "machine"
+
+
 def _payload(event: dict) -> dict:
     """Audit payloads are stored as canonical JSON strings, to keep the hash stable."""
     raw = event.get("payload")

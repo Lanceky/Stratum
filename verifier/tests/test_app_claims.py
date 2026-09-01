@@ -250,14 +250,40 @@ def test_the_signature_recovers_to_the_issuer(client, people, signing):
     assert claim_mod.recover(body["message"], body["signature"]) == body["issuer"]
 
 
-def test_the_signed_claim_carries_who_decided_it(client, people, signing):
+def test_an_unsigned_pass_is_reported_as_a_machine_decision(client, people,
+                                                            signing):
     """
-    A contract that sees only "approved" cannot tell an automatic pass from
-    one a named human settled. That distinction is the product.
+    A gate that reached PASS on its own was authorised by nobody. Reporting it
+    as human-approved would manufacture an authorisation.
     """
     gid = claim_gate(client)
     settle(client, gid)
     assert sign(client, gid).json()["claim"]["decided_by"] == "machine"
+
+
+def test_a_human_signature_is_carried_onto_the_claim(client, people, signing):
+    """
+    A contract that sees only "approved" cannot tell an automatic pass from
+    one a person settled. That distinction is the product, and it was being
+    lost: the gate walked to SIGNED by a human and the claim still said
+    machine, because only a recorded review counted.
+    """
+    gid = claim_gate(client)
+    settle(client, gid)
+    appmod.store.gate_transition(gid, "SIGNED", "human")
+    assert sign(client, gid).json()["claim"]["decided_by"] == "human"
+
+
+def test_a_named_reviewer_outranks_a_bare_signature(client, people, signing):
+    """
+    Both are human, but only one was shown the evidence and ruled on it. The
+    named person is the more accountable record, so it is the one reported.
+    """
+    gid = claim_gate(client)
+    settle(client, gid)
+    appmod.store.add_review(gid, "reviewer-9", "APPROVE", "looks like a person")
+    appmod.store.gate_transition(gid, "SIGNED", "human")
+    assert sign(client, gid).json()["claim"]["decided_by"] == "reviewer:reviewer-9"
 
 
 def test_signing_without_a_key_is_not_reported_as_a_bug(client, people,
@@ -350,3 +376,35 @@ def test_the_claim_is_pinned_to_the_chain_head(client, people, signing):
     body = sign(client, gid).json()
     assert body["claim"]["chain_head"] == before
     assert appmod.store.chain(gid)[-1]["hash"] != before
+
+
+# ── the demo affordance ───────────────────────────────────────────────────
+def test_a_demo_gate_can_be_opened_in_claim_mode(client):
+    """The browser has no credentials, so this is its only way to a claim gate."""
+    r = client.post("/demo/gate?mode=one_human_one_claim")
+    assert r.status_code == 201
+    assert r.json()["mode"] == "one_human_one_claim"
+
+
+def test_a_demo_gate_defaults_to_the_original_mode(client):
+    assert client.post("/demo/gate").json()["mode"] == "authorise_action"
+
+
+def test_an_invented_mode_is_refused(client):
+    """
+    A gate in a mode that does not exist would carry a requirement set nothing
+    can satisfy, and the caller would read the refusal as a bug.
+    """
+    r = client.post("/demo/gate?mode=definitely_a_human")
+    assert r.status_code == 422
+    assert "one_human_one_claim" in r.text
+
+
+def test_enrolling_does_not_open_a_phantom_gate(client, people):
+    """
+    Reaching the demo tenant used to mean calling `demo_gate` for its side
+    effect, which left an unrequested gate in the census — a landing page
+    counting authorisations nobody asked for.
+    """
+    enrol(client, people[0], "p0")
+    assert client.get("/health").json()["gates"]["total"] == 0
