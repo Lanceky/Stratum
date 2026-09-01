@@ -68,6 +68,30 @@ KEY_ENV = {
 BUILD_PATH = "/build"
 ANALYZE_PATH = "/analyze_build"
 SIGN_PATH = "/sign"
+
+MODE_ENV = "NUTRIENT_API_MODE"
+
+
+def mode() -> str:
+    """
+    Which record/replay mode document calls run under.
+
+    Separate from `STRATUM_API_MODE` because that flag guards the Perfect Corp
+    grant, which is metered and cannot be topped up. Nutrient's is unmetered,
+    so replaying it conserves nothing while costing the one thing the seal path
+    needs: a document that was actually produced.
+
+    It also cannot be replayed in any useful sense. A certificate embeds its
+    issue time and its gate id, so no two renders are the same bytes, and the
+    key derived from those bytes never repeats. Replay here does not return a
+    stale document — it raises, every time, because the call is always new.
+
+    Defaults to the global flag rather than to `live` all the same. The test
+    suite pins `STRATUM_API_MODE=replay` to assert that nothing reaches the
+    network, and an integration that quietly exempted itself would make that
+    assertion untrue while leaving it green.
+    """
+    return os.getenv(MODE_ENV, "") or fixtures.MODE
 EXTRACT_PATH = "/extraction/extract"
 
 # Generous, because /build is synchronous and does real work: a signature plus
@@ -209,7 +233,8 @@ def analyze(instructions: dict) -> Any:
     return reply.json()
 
 
-def build(instructions: dict, files: dict[str, FilePart] | None = None) -> bytes:
+def build(instructions: dict, files: dict[str, FilePart] | None = None, *,
+          record: bool = True) -> bytes:
     """
     Run a document workflow and return the finished bytes.
 
@@ -224,11 +249,12 @@ def build(instructions: dict, files: dict[str, FilePart] | None = None) -> bytes
         _fixture_payload("build", instructions, files),
         lambda: _post_binary(BUILD_PATH, {"instructions": instructions},
                              files, "build", PROCESSOR),
-        ext=".pdf",
+        ext=".pdf", mode=mode(), record=record,
     )
 
 
-def sign(pdf: bytes, options: dict | None = None) -> bytes:
+def sign(pdf: bytes, options: dict | None = None, *,
+         record: bool = True) -> bytes:
     """
     Apply a digital signature. Verified to embed a real CAdES b-lt signature —
     /ByteRange, /ETSI.CAdES and an Adobe.PPKLite handler.
@@ -243,7 +269,7 @@ def sign(pdf: bytes, options: dict | None = None) -> bytes:
         "nutrient-sign",
         _fixture_payload("sign", data, files),
         lambda: _post_binary(SIGN_PATH, {"data": data}, files, "sign", PROCESSOR),
-        ext=".pdf",
+        ext=".pdf", mode=mode(), record=record,
     )
 
 
@@ -290,7 +316,7 @@ def _post_json(path: str, fields: dict, files: dict[str, FilePart] | None,
 HTML_PART = "index.html"
 
 
-def html_to_pdf(html: str, *, pdfa: bool = False) -> bytes:
+def html_to_pdf(html: str, *, pdfa: bool = False, record: bool = True) -> bytes:
     """
     The narrow case the attestation needs: one HTML document in, one PDF out.
 
@@ -304,4 +330,5 @@ def html_to_pdf(html: str, *, pdfa: bool = False) -> bytes:
     if pdfa:
         instructions["output"] = {"type": "pdfa", "conformance": "pdfa-3b"}
     return build(instructions,
-                 {HTML_PART: (HTML_PART, html.encode(), "text/html")})
+                 {HTML_PART: (HTML_PART, html.encode(), "text/html")},
+                 record=record)

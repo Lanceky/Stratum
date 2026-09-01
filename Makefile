@@ -50,7 +50,10 @@ schema: ## Emit the 9-table data model for import into Xano
 		"import json,schema; print(json.dumps(schema.xano_export(), indent=2))"
 
 verifier: ## Run the Python verifier sidecar on :8000
-	@cd verifier && STRATUM_DEMO_TAMPER=$${STRATUM_DEMO_TAMPER:-1} \
+	@set -a; [ -f .env ] && . ./.env; set +a; cd verifier && \
+		STRATUM_DEMO_TAMPER=$${STRATUM_DEMO_TAMPER:-1} \
+		STRATUM_DB=$${STRATUM_DB:-/tmp/stratum.db} \
+		NUTRIENT_API_MODE=$${NUTRIENT_API_MODE:-live} \
 		.venv/bin/uvicorn app:app --reload --port 8000
 
 review-seed: ## Fill the review queue so the reviewer console has something to show

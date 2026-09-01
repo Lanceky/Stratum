@@ -198,7 +198,8 @@ def call(op: str, payload: Any, live_fn: Callable[[], Any]) -> Any:
 
 
 def call_binary(op: str, payload: Any, live_fn: Callable[[], bytes], *,
-                ext: str = ".bin") -> bytes:
+                ext: str = ".bin", mode: str | None = None,
+                record: bool = True) -> bytes:
     """
     Record/replay for an API that answers with bytes rather than JSON.
 
@@ -218,21 +219,35 @@ def call_binary(op: str, payload: Any, live_fn: Callable[[], bytes], *,
     charging a Nutrient call against that ceiling would let document work
     exhaust the budget guarding the sensor — two unrelated quotas sharing one
     counter, where the sensor is the one that cannot be topped up.
+
+    `mode` lets a caller answer for itself rather than obeying the global flag.
+    That flag exists to conserve a metered grant, so an integration whose grant
+    is unmetered is being throttled by a rule written about someone else's
+    quota. It stays an explicit argument: a caller has to state that its own
+    quota is the one being managed, and the default remains the global setting.
+
+    `record=False` is for calls whose key can never repeat. A certificate
+    embeds its issue time, so every render is different bytes under a different
+    key — the recording could not be served back even in principle, and writing
+    one anyway leaves a PDF on disk per document issued, growing without bound
+    and replayable never. Recording is for calls that can recur.
     """
-    if MODE == "replay":
+    mode = mode or MODE
+    if mode == "replay":
         found = resolve(op, payload, ext=ext)
         if found is None:
             raise FixtureMissing(op, fixture_key(op, payload))
         return found.read_bytes()
 
-    if MODE == "auto":
+    if mode == "auto":
         recorded = resolve(op, payload, synthetic_ok=False, ext=ext)
         if recorded is not None:
             return recorded.read_bytes()
 
     resp = live_fn()
-    FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
-    (FIXTURE_DIR / f"{fixture_key(op, payload)}{ext}").write_bytes(resp)
+    if record:
+        FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
+        (FIXTURE_DIR / f"{fixture_key(op, payload)}{ext}").write_bytes(resp)
     return resp
 
 

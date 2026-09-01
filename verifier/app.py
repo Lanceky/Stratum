@@ -12,6 +12,7 @@ of days. See context.md §6.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -20,10 +21,14 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+import attestation
+import certificate
+import nutrient
 from dimensions import STABLE, VOLATILE
-from fixtures import budget_status
+from fixtures import FixtureMissing, budget_status
 from gate import Actor, GateMode, GateState, IllegalTransition
 from store import Store
 
@@ -543,6 +548,107 @@ def submit_review(gate_id: str, body: ReviewDecision) -> dict:
 @app.get("/gates/{gate_id}/audit")
 def audit(gate_id: str) -> dict:
     return {"gate_id": gate_id, "events": store.chain(gate_id)}
+
+@app.get("/gates/{gate_id}/attestation.pdf")
+def attestation_pdf(gate_id: str,
+                    jurisdiction: str = "UNSPECIFIED",
+                    risk_tier: str = "STANDARD") -> Response:
+    """
+    The gate, as a sealed document that outlives this server.
+
+    Everything else STRATUM produces is only meaningful while the verifier is
+    running and its database is intact. A relying party three years from now
+    has neither. This route is the answer to that: the evidence graph, the
+    limits of each check, and the hash chain head, rendered into a PDF and
+    signed, so the record can be filed by whoever inherits the liability.
+
+    Built from the chain rather than from the gate's current state. By the time
+    a certificate is pulled the gate usually reads SIGNED, which is not a
+    verdict — `attestation.outcome_of` recovers the actual finding from the
+    audit trail, so a REVIEW a human approved never renders as a clean PASS.
+
+    A broken chain does not block issue. It is stated at the top of the
+    document and the certificate is still produced, because a portable record
+    of a tampered ledger is exactly the artefact an investigator needs, and
+    withholding it would leave the tamper visible only from inside the system
+    that was tampered with.
+    """
+    gate = store.get("gates", gate_id)
+    if gate is None:
+        raise HTTPException(404, "no such gate")
+
+    try:
+        jur = attestation.Jurisdiction(jurisdiction)
+        tier = attestation.RiskTier(risk_tier)
+    except ValueError as exc:
+        raise HTTPException(
+            422, f"{exc}. A certificate must not claim a regime it was not "
+                 f"given.") from exc
+
+    events = store.chain(gate_id)
+    reviews = store.reviews_for(gate_id)
+    att = attestation.build(
+        gate, events, store.evidence_for(gate_id),
+        jurisdiction=jur, risk_tier=tier,
+        # The standing ruling is the last row, not the first. The state machine
+        # does not currently allow a gate back into REVIEW once ruled on, so
+        # today there is at most one — but `add_review` is a plain insert and
+        # the certificate must report the decision in force rather than the
+        # first one anyone recorded, whichever way that changes.
+        reviewer=reviews[-1] if reviews else None,
+        chain_intact=store.verify_chain(gate_id).ok,
+    )
+
+    # Checked here rather than left to `seal`, which also guards. A gate that
+    # may not be certified should be refused before anything reaches out over
+    # the network — the refusal is a local fact about the gate, and making it
+    # depend on the renderer being available would turn a clear 409 into
+    # whatever the upstream happened to say that day.
+    try:
+        certificate.guard(att)
+    except certificate.NotSealable as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    try:
+        pdf = certificate.seal(att)
+    except certificate.NotSealable as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except nutrient.NotAuthorised as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except FixtureMissing as exc:
+        raise HTTPException(
+            503, f"{exc.cause}. A certificate embeds its issue time, so no two "
+                 f"are the same bytes and none can be served from a recording. "
+                 f"Set NUTRIENT_API_MODE=live — the grant is unmetered, so the "
+                 f"flag conserving the sensor budget does not apply here."
+        ) from exc
+    except nutrient.NutrientError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    # Issuing is itself an auditable act, and the digest commits the chain to
+    # this exact document. Two certificates for one gate can then be told
+    # apart, and a PDF presented later can be matched against the record.
+    # Written only on success: an attempt that produced nothing must not leave
+    # a trail implying a certificate is in circulation.
+    store.audit(gate_id, "attestation", {
+        "outcome": att.outcome,
+        "jurisdiction": str(jur),
+        "risk_tier": str(tier),
+        "chain_head_at_issue": att.chain_head,
+        "chain_intact": att.chain_intact,
+        "document_sha256": hashlib.sha256(pdf).hexdigest(),
+        "bytes": len(pdf),
+    })
+
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="stratum-{gate_id[:8]}-attestation.pdf"',
+            # So a caller can verify the download without opening it.
+            "X-Stratum-Document-SHA256": hashlib.sha256(pdf).hexdigest(),
+            "X-Stratum-Outcome": att.outcome,
+        })
 
 
 @app.get("/gates/{gate_id}/verify_chain")

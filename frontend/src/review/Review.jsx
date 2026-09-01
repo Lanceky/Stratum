@@ -42,6 +42,109 @@ function checkVerdict(check) {
   return check.verdict ?? (check.passed ? 'PASS' : 'FAIL')
 }
 
+/**
+ * The certificate, offered once the gate has a verdict.
+ *
+ * Downloaded through fetch rather than a plain link so a refusal is readable.
+ * A link handed the browser a JSON error body to render as a page, which turns
+ * "the renderer is unreachable" into what looks like a broken console — the
+ * reviewer needs to know the document was not produced, not to be shown a
+ * stack of braces.
+ *
+ * The regime is chosen, never defaulted. A certificate that makes an EU claim
+ * under US rules is worse than no certificate, so the selection is explicit and
+ * the server refuses anything it was not given.
+ */
+function Certificate({ gateId, state }) {
+  const [jurisdiction, setJurisdiction] = useState('UNSPECIFIED')
+  const [tier, setTier] = useState('STANDARD')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [issued, setIssued] = useState(null)
+
+  const sealable = ['PASS', 'REVIEW', 'FAIL', 'SIGNED', 'SEALED'].includes(state)
+
+  async function download() {
+    setBusy(true); setError(null)
+    try {
+      const q = `jurisdiction=${jurisdiction}&risk_tier=${tier}`
+      const r = await fetch(`${API}/gates/${gateId}/attestation.pdf?${q}`)
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail ?? `the renderer returned ${r.status}`)
+      }
+      const digest = r.headers.get('X-Stratum-Document-SHA256')
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `stratum-${gateId.slice(0, 8)}-attestation.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      setIssued({ digest, bytes: blob.size })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!sealable) {
+    return (
+      <Card title="Certificate">
+        <p className="dim small" style={{ margin: 0 }}>
+          This gate has not reached a verdict. A certificate issued now would
+          circulate as a finished record of an open question.
+        </p>
+      </Card>
+    )
+  }
+
+  return (
+    <Card title="Certificate">
+      <p className="small" style={{ marginTop: 0 }}>
+        A sealed PDF of the evidence, the limits of each check and the chain
+        head — the part of this record that outlives the server.
+      </p>
+
+      <div className="wrap" style={{ marginBottom: 12 }}>
+        <label className="small">
+          Jurisdiction{' '}
+          <select value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)}>
+            <option value="UNSPECIFIED">Not claimed</option>
+            <option value="EU_AMLR">EU AMLR</option>
+            <option value="US_CIP">US CIP</option>
+          </select>
+        </label>
+        <label className="small">
+          Risk tier{' '}
+          <select value={tier} onChange={(e) => setTier(e.target.value)}>
+            <option value="STANDARD">Standard</option>
+            <option value="ENHANCED">Enhanced</option>
+          </select>
+        </label>
+      </div>
+
+      <button className="btn ghost" onClick={download} disabled={busy}>
+        {busy ? <Spinner /> : null} Download certificate
+      </button>
+
+      {issued && (
+        <p className="small" style={{ marginBottom: 0 }}>
+          Issued, {issued.bytes.toLocaleString()} bytes. The audit chain now
+          carries this digest, so the file can be matched against the record
+          rather than taken on trust: <Hash value={issued.digest} />
+        </p>
+      )}
+      {error && (
+        <p className="small" style={{ color: 'var(--red)', marginBottom: 0 }}>
+          No certificate was produced. {error}
+        </p>
+      )}
+    </Card>
+  )
+}
+
 function timeLeft(expiresAt) {
   const ms = new Date(expiresAt).getTime() - Date.now()
   if (Number.isNaN(ms)) return null
@@ -495,6 +598,8 @@ const Detail = React.forwardRef(function Detail(
           <p className="small" style={{ color: 'var(--red)', marginBottom: 0 }}>{error}</p>
         )}
       </Card>
+
+      <Certificate gateId={packet.gate_id} state={packet.state} />
 
       <p className="dim small">
         No capture, landmark or biometric value appears on this screen, by
