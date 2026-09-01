@@ -70,7 +70,7 @@ const SCRIPT = [
   },
 ]
 
-function Call({ step, result }) {
+function Call({ step, result, pending }) {
   const unexpected = result && result.status !== step.expect
   const style = {
     ...S.call,
@@ -94,6 +94,13 @@ function Call({ step, result }) {
           {unexpected && (
             <span style={{ color: 'var(--amber)' }}> · expected {step.expect}</span>
           )}
+        </p>
+      ) : pending ? (
+        // The prediction is shown before the call, not after. Stated up front it
+        // is a claim the run can falsify; revealed afterwards it would only ever
+        // agree with whatever came back.
+        <p className="mono small muted" style={{ margin: '4px 0 0' }}>
+          expects {step.expect}
         </p>
       ) : (
         <p className="mono small muted" style={{ margin: '4px 0 0' }}><Spinner /></p>
@@ -234,13 +241,13 @@ export default function Agent() {
 
       <div className="stack" style={{ gap: 30 }}>
         {SCRIPT.map((s, i) => {
-          if (i > step) return null
+          const pending = i > step
           return (
-            <section key={s.key}>
+            <section key={s.key} className={pending ? 'step-pending' : undefined}>
               <p className="eyebrow" style={{ marginBottom: 6 }}>step {i + 1}</p>
               <h3 style={{ fontSize: 16, margin: '0 0 6px' }}>{s.title}</h3>
               <p className="muted small" style={{ margin: '0 0 12px', maxWidth: 620 }}>{s.line}</p>
-              <Call step={s} result={results[s.key]} />
+              <Call step={s} result={results[s.key]} pending={pending} />
               <Verdict step={s} result={results[s.key]} />
             </section>
           )

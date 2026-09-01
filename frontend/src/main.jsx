@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 
@@ -10,38 +10,136 @@ import Review from './review/Review.jsx'
 import Verify from './verify/Verify.jsx'
 import Dashboard from './dashboard/Dashboard.jsx'
 
-const ROUTES = [
+const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
+
+/**
+ * The demo is a single story told in three sittings, so it is presented as an
+ * order rather than a menu.
+ *
+ * A list of five equal cards makes every door look alike and leaves the visitor
+ * to guess which one to open first. These three are not alternatives — each one
+ * only means anything because of the one before it: the agent is refused, so a
+ * human has to appear; the human's evidence is inconclusive, so a reviewer has
+ * to rule; the ruling is worth nothing unless it leaves the building, so it is
+ * sealed into a document.
+ */
+const PATH = [
   {
     to: '/agent',
-    name: 'Agent console',
-    line: 'Watch an agent with valid credentials try to sign its own work, and be refused on the record.',
-    state: 'live',
+    n: '01',
+    name: 'An agent is refused',
+    line: 'Valid credentials, correct request, still refused — and the refusal is written to the chain as evidence.',
+    outcome: 'A gate opens, and it needs a person.',
   },
   {
     to: '/gate/demo',
-    name: 'Gate',
-    line: 'Capture, then three checks: a live human, an unforged capture, the right person.',
-    state: 'live',
+    n: '02',
+    name: 'A person answers',
+    line: 'Three checks: someone is physically present, the capture is not generated, and it is the enrolled signer.',
+    outcome: 'Two checks settle. The third cannot.',
   },
   {
     to: '/review',
-    name: 'Reviewer console',
-    line: 'Resolve the gates the checks could not settle — with the signal, never the face.',
-    state: 'live',
-  },
-  {
-    to: '/verify',
-    name: 'Public verifier',
-    line: 'Resolve an attestation hash against its DNS record.',
-    state: 'step 10a',
-  },
-  {
-    to: '/dashboard',
-    name: 'Tenant dashboard',
-    line: 'Gates, attestations and the typosquat sweep.',
-    state: 'step 10',
+    n: '03',
+    name: 'A reviewer settles it',
+    line: 'The measured overlap between a sibling and a bad photograph is real, so those gates reach a named human.',
+    outcome: 'A ruling — and a sealed certificate.',
   },
 ]
+
+// Routes that exist but are not built. Named plainly rather than hidden: a
+// door that opens onto nothing costs more trust than an absent one.
+const UNBUILT = [
+  { to: '/verify', name: 'Public verifier', line: 'resolve an attestation against its DNS record' },
+  { to: '/dashboard', name: 'Tenant dashboard', line: 'gates, attestations, typosquat sweep' },
+]
+
+function useSystem() {
+  const [sys, setSys] = useState(null)
+  useEffect(() => {
+    let alive = true
+    // One request, not three. The counts come from /health because the server
+    // is the only thing that can count gates it has not listed — the earlier
+    // version called /gates with no state, got the REVIEW page back, and
+    // labelled it "gates opened", which was two names for the same number.
+    const load = async () => {
+      try {
+        const r = await fetch(`${API}/health`)
+        if (!r.ok) throw new Error(`health ${r.status}`)
+        const h = await r.json()
+        if (alive) setSys(h)
+      } catch {
+        if (alive) setSys({ down: true })
+      }
+    }
+    load()
+    const t = setInterval(load, 10000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
+  return sys
+}
+
+/**
+ * Live numbers, not a screenshot of them.
+ *
+ * The claim on this page is that authorisations are actually being recorded.
+ * Stating that in prose and then showing nothing asks to be taken on trust,
+ * which is the one thing this system is built not to require.
+ */
+function SystemPanel() {
+  const sys = useSystem()
+
+  if (!sys) return <Card><p className="dim small" style={{ margin: 0 }}>Reading system state…</p></Card>
+
+  if (sys.down) {
+    return (
+      <Card>
+        <p className="eyebrow" style={{ marginTop: 0 }}>system</p>
+        <p className="small" style={{ margin: 0, color: 'var(--red)' }}>
+          The verifier is not answering. Nothing on this page can be
+          demonstrated until it is running — <code className="mono">make verifier</code>.
+        </p>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <div className="between" style={{ marginBottom: 14 }}>
+        <p className="eyebrow" style={{ margin: 0 }}>system</p>
+        <span className="badge badge-pass">live</span>
+      </div>
+
+      <div className="stat-grid">
+        <div>
+          <div className="stat-n">{sys.gates?.total ?? 0}</div>
+          <div className="dim small">gates opened</div>
+        </div>
+        <div>
+          <div className="stat-n" style={{ color: sys.gates?.awaiting_review ? 'var(--amber-bright)' : undefined }}>
+            {sys.gates?.awaiting_review ?? 0}
+          </div>
+          <div className="dim small">awaiting a human</div>
+        </div>
+      </div>
+
+      <div className="rule" />
+
+      <div className="between small">
+        <span className="dim">sensor calls</span>
+        <span className="mono">{sys.api_mode}</span>
+      </div>
+      <div className="between small" style={{ marginTop: 6 }}>
+        <span className="dim">metered units left</span>
+        <span className="mono">{sys.units?.remaining ?? '—'} / {sys.units?.ceiling ?? '—'}</span>
+      </div>
+      <p className="dim small" style={{ margin: '12px 0 0' }}>
+        The sensor grant is metered and cannot be topped up, so its calls run
+        from recordings unless asked otherwise. Everything else is live.
+      </p>
+    </Card>
+  )
+}
 
 function Home() {
   return (
@@ -53,37 +151,83 @@ function Home() {
         </span>
       </div>
 
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '64px 24px 80px' }}>
-        <p className="eyebrow">the boundary</p>
-        <h1 style={{ fontSize: 38, lineHeight: 1.16, margin: '10px 0 0', maxWidth: 720 }}>
-          An AI agent can do the work.
-          <br />
-          Only a verified human can{' '}
-          <span style={{ color: 'var(--indigo-bright)' }}>sign for it</span>.
-        </h1>
-        <p className="muted" style={{ maxWidth: 560, marginTop: 18, fontSize: 15 }}>
-          Every authorisation is written to a hash chain, one block per event.
-          An agent reaching for a signature is refused — and the refusal is
-          recorded, because that is exactly what an auditor wants to see.
-        </p>
+      <div className="home">
+        <section className="home-hero">
+          <div>
+            <p className="eyebrow">the boundary</p>
+            <h1 className="home-h1">
+              An AI agent can do the work.
+              <br />
+              Only a verified human can{' '}
+              <span style={{ color: 'var(--indigo-bright)' }}>sign for it</span>.
+            </h1>
+            <p className="muted" style={{ maxWidth: 520, marginTop: 18, fontSize: 15 }}>
+              Every authorisation is written to a hash chain, one block per event.
+              An agent reaching for a signature is refused — and the refusal is
+              recorded, because that is exactly what an auditor wants to see.
+            </p>
+          </div>
+          <SystemPanel />
+        </section>
 
-        <div style={{ display: 'grid', gap: 14, marginTop: 44 }}>
-          {ROUTES.map((r) => (
-            <Link key={r.to} to={r.to} style={{ color: 'inherit', textDecoration: 'none' }}>
-              <Card className="hover-lift">
-                <div className="between">
-                  <div>
-                    <h3 style={{ fontSize: 15 }}>{r.name}</h3>
-                    <p className="muted small" style={{ margin: '5px 0 0' }}>{r.line}</p>
-                  </div>
-                  <span className={`badge ${r.state === 'live' ? 'badge-signed' : 'badge-idle'}`}>
-                    {r.state}
-                  </span>
-                </div>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <section>
+          <div className="between" style={{ marginBottom: 16 }}>
+            <p className="eyebrow" style={{ margin: 0 }}>the demo, in order</p>
+            <p className="dim small" style={{ margin: 0 }}>each step exists because the one before it failed to settle</p>
+          </div>
+
+          <div className="path">
+            {PATH.map((s) => (
+              <Link key={s.to} to={s.to} className="path-step">
+                <span className="path-n">{s.n}</span>
+                <h3 className="path-name">{s.name}</h3>
+                <p className="muted small path-line">{s.line}</p>
+                <p className="path-outcome">{s.outcome}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="artefact">
+          <div>
+            <p className="eyebrow" style={{ marginTop: 0 }}>what comes out</p>
+            <h3 style={{ fontSize: 16, margin: '0 0 8px' }}>
+              A sealed certificate that outlives this server
+            </h3>
+            <p className="muted small" style={{ margin: 0, maxWidth: 560 }}>
+              The evidence, the measured limit of every check, and the chain head
+              — rendered to PDF/A and signed. It states what was <em>not</em>{' '}
+              established as plainly as what was, because whoever relies on it
+              inherits both. Downloadable from any settled gate in the reviewer
+              console.
+            </p>
+          </div>
+          <div className="artefact-doc" aria-hidden="true">
+            <div className="doc-line doc-line-title" />
+            <div className="doc-line" style={{ width: '78%' }} />
+            <div className="doc-line" style={{ width: '52%' }} />
+            <div className="doc-box" />
+            <div className="doc-line" style={{ width: '66%' }} />
+            <div className="doc-line" style={{ width: '84%' }} />
+            <div className="doc-seal">SIGNED</div>
+          </div>
+        </section>
+
+        <section className="unbuilt">
+          <p className="eyebrow" style={{ marginTop: 0 }}>not built</p>
+          <p className="dim small" style={{ margin: '0 0 10px' }}>
+            Scoped and routed, with nothing behind them yet. Listed so the gap is
+            visible rather than discovered by clicking.
+          </p>
+          <div className="wrap">
+            {UNBUILT.map((u) => (
+              <Link key={u.to} to={u.to} className="unbuilt-item">
+                <span>{u.name}</span>
+                <span className="dim"> — {u.line}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
       </div>
     </main>
   )

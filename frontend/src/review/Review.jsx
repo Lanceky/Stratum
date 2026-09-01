@@ -493,113 +493,128 @@ const Detail = React.forwardRef(function Detail(
       {packet.escalations?.length > 0 && <Escalations events={packet.escalations} />}
       {packet.checks?.length > 0 && <StandIn checks={packet.checks} />}
 
-      <Card title="Why this needs a person">
-        {packet.reasons?.length > 0 ? (
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.65 }}>
-            {packet.reasons.map((r, i) => <li key={i}>{r}</li>)}
-          </ul>
-        ) : (
-          <p style={{ margin: 0 }}>{packet.triggering_signal}</p>
-        )}
-        <hr className="rule" />
-        <p className="dim small" style={{ margin: 0 }}>
-          These are the words the decision layer recorded at the time, read back
-          out of the audit chain — not recomputed now. You are seeing what was
-          decided and on what basis.
-        </p>
-      </Card>
+      {/*
+        Two columns: what the reviewer has to read on the left, what they can
+        do on the right, pinned.
 
-      <Card title="Checks">
-        <Checks checks={packet.checks} />
-      </Card>
+        Stacked, the ruling sat below the full history — so acting meant
+        scrolling past thirty audit rows, and on a long gate the buttons were
+        off-screen entirely while the reason for pressing them was not. The
+        evidence is what you scroll; the decision should not move.
+      */}
+      <div className="review-split">
+        <div className="review-main">
+          <Card title="Why this needs a person">
+            {packet.reasons?.length > 0 ? (
+              <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.65 }}>
+                {packet.reasons.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+            ) : (
+              <p style={{ margin: 0 }}>{packet.triggering_signal}</p>
+            )}
+            <hr className="rule" />
+            <p className="dim small" style={{ margin: 0 }}>
+              These are the words the decision layer recorded at the time, read back
+              out of the audit chain — not recomputed now. You are seeing what was
+              decided and on what basis.
+            </p>
+          </Card>
 
-      <Card title="Integrity">
-        <Integrity chain={packet.chain} timeline={packet.timeline}
-                   gateId={packet.gate_id} onTampered={onTampered} />
-      </Card>
+          <Card title="Checks">
+            <Checks checks={packet.checks} />
+          </Card>
 
-      <Card title="History">
-        <Timeline events={packet.timeline} />
-      </Card>
+          <Card title="Integrity">
+            <Integrity chain={packet.chain} timeline={packet.timeline}
+                       gateId={packet.gate_id} onTampered={onTampered} />
+          </Card>
 
-      {packet.reviews?.length > 0 && (
-        <Card title="Earlier rulings">
-          {packet.reviews.map((r) => (
-            <div key={r.id} className="row" style={{ paddingTop: 6 }}>
-              <Badge value={r.decision === 'approve' ? 'PASS' : 'FAIL'} />
-              <span style={{ fontSize: 13 }}>
-                <strong>{r.reviewer_id}</strong>
-                {r.notes && <span className="muted"> — {r.notes}</span>}
-              </span>
+          <Card title="History">
+            <Timeline events={packet.timeline} />
+          </Card>
+
+          {packet.reviews?.length > 0 && (
+            <Card title="Earlier rulings">
+              {packet.reviews.map((r) => (
+                <div key={r.id} className="row" style={{ paddingTop: 6 }}>
+                  <Badge value={r.decision === 'approve' ? 'PASS' : 'FAIL'} />
+                  <span style={{ fontSize: 13 }}>
+                    <strong>{r.reviewer_id}</strong>
+                    {r.notes && <span className="muted"> — {r.notes}</span>}
+                  </span>
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>
+
+        <div className="review-rail">
+          <Card title="Your ruling">
+            <p className="muted small" style={{ marginTop: 0 }}>
+              You are not confirming a score. You are deciding a question the
+              evidence did not settle, and your name is recorded against it in the
+              same tamper-evident chain as everything above.
+            </p>
+            <div className="stack" style={{ gap: 10, marginBottom: 12 }}>
+              <input
+                className="input"
+                value={reviewer}
+                onChange={(e) => setReviewer(e.target.value)}
+                placeholder="Your reviewer ID — required"
+                aria-label="Reviewer ID"
+              />
+              <input
+                className="input"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Why — the only record of your reasoning"
+                aria-label="Notes"
+              />
             </div>
-          ))}
-        </Card>
-      )}
 
-      <Card title="Your ruling">
-        <p className="muted small" style={{ marginTop: 0 }}>
-          You are not confirming a score. You are deciding a question the
-          evidence did not settle, and your name is recorded against it in the
-          same tamper-evident chain as everything above.
-        </p>
-        <div className="stack" style={{ gap: 10, marginBottom: 12 }}>
-          <input
-            className="input"
-            value={reviewer}
-            onChange={(e) => setReviewer(e.target.value)}
-            placeholder="Your reviewer ID — required"
-            aria-label="Reviewer ID"
-          />
-          <input
-            className="input"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Why (optional, but it is the only record of your reasoning)"
-            aria-label="Notes"
-          />
+            {stale && (
+              <div className="alert alert-amber" style={{ marginBottom: 12 }}>
+                <p className="small" style={{ margin: 0 }}>
+                  {packet.expired
+                    ? 'This gate has expired. It can no longer be authorised — the person it belongs to must start again.'
+                    : `This gate is ${packet.state}; it is no longer awaiting a review.`}
+                </p>
+              </div>
+            )}
+            {broken && !stale && (
+              <div className="alert" style={{ marginBottom: 12 }}>
+                <p className="small" style={{ margin: 0 }}>
+                  Approval is disabled because the audit chain is broken. You can
+                  still reject: refusing is the safe response to a history that
+                  cannot be trusted.
+                </p>
+              </div>
+            )}
+
+            <div className="wrap">
+              <button className="btn btn-primary" disabled={!canApprove}
+                      onClick={() => submit('approve')}>
+                {busy ? <Spinner /> : null} Approve — authorise
+              </button>
+              <button className="btn btn-danger" disabled={!canReject}
+                      onClick={() => submit('reject')}>
+                Reject
+              </button>
+            </div>
+
+            {!named && (
+              <p className="dim small" style={{ marginBottom: 0 }}>
+                Enter your reviewer ID to rule. An anonymous review is not a review.
+              </p>
+            )}
+            {error && (
+              <p className="small" style={{ color: 'var(--red)', marginBottom: 0 }}>{error}</p>
+            )}
+          </Card>
+
+          <Certificate gateId={packet.gate_id} state={packet.state} />
         </div>
-
-        {stale && (
-          <div className="alert alert-amber" style={{ marginBottom: 12 }}>
-            <p className="small" style={{ margin: 0 }}>
-              {packet.expired
-                ? 'This gate has expired. It can no longer be authorised — the person it belongs to must start again.'
-                : `This gate is ${packet.state}; it is no longer awaiting a review.`}
-            </p>
-          </div>
-        )}
-        {broken && !stale && (
-          <div className="alert" style={{ marginBottom: 12 }}>
-            <p className="small" style={{ margin: 0 }}>
-              Approval is disabled because the audit chain is broken. You can
-              still reject: refusing is the safe response to a history that
-              cannot be trusted.
-            </p>
-          </div>
-        )}
-
-        <div className="wrap">
-          <button className="btn btn-primary" disabled={!canApprove}
-                  onClick={() => submit('approve')}>
-            {busy ? <Spinner /> : null} Approve — authorise
-          </button>
-          <button className="btn btn-danger" disabled={!canReject}
-                  onClick={() => submit('reject')}>
-            Reject
-          </button>
-        </div>
-
-        {!named && (
-          <p className="dim small" style={{ marginBottom: 0 }}>
-            Enter your reviewer ID to rule. An anonymous review is not a review.
-          </p>
-        )}
-        {error && (
-          <p className="small" style={{ color: 'var(--red)', marginBottom: 0 }}>{error}</p>
-        )}
-      </Card>
-
-      <Certificate gateId={packet.gate_id} state={packet.state} />
+      </div>
 
       <p className="dim small">
         No capture, landmark or biometric value appears on this screen, by

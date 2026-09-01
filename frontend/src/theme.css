@@ -397,10 +397,226 @@ a:hover > .hover-lift {
 }
 a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 
+/* ── landing ──────────────────────────────────────────────────────────────
+   The three consoles are one story told in order, not five equal doors, so
+   they are laid out as a path with the sequence carried by the numbering and
+   the connector rather than stated in prose. */
+
+.home {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 56px 24px 80px;
+  display: grid;
+  gap: 56px;
+}
+
+.home-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(272px, 0.8fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.home-h1 {
+  font-size: 36px;
+  line-height: 1.15;
+  margin: 10px 0 0;
+  letter-spacing: -0.02em;
+  /* The line break after "the work." is written into the markup, so the
+     second clause must not wrap again — "sign for / it" splits the only
+     phrase on the page that has to land whole. */
+  text-wrap: balance;
+}
+
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.stat-n {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.path { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+
+.path-step {
+  position: relative;
+  display: block;
+  padding: 22px 22px 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+.path-step:first-child { border-radius: var(--r-lg) 0 0 var(--r-lg); }
+.path-step:last-child  { border-radius: 0 var(--r-lg) var(--r-lg) 0; }
+.path-step + .path-step { border-left: 0; }
+
+/* The connector is the argument: step 3 exists because step 2 did not settle.
+   Drawn as a chevron between panels so the eye travels left to right. */
+.path-step + .path-step::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  transform: rotate(45deg);
+  z-index: 2;
+}
+
+.path-step:hover {
+  background: var(--surface-2);
+  border-color: var(--border-indigo);
+  z-index: 3;
+}
+.path-step:hover .path-name { color: var(--indigo-bright); }
+.path-step:hover .path-n { color: var(--indigo-bright); border-color: var(--border-indigo); }
+
+.path-n {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 2px 9px;
+  margin-bottom: 12px;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.path-name { font-size: 15px; margin: 0 0 6px; transition: color 140ms ease; }
+.path-line { margin: 0 0 14px; min-height: 54px; }
+
+.path-outcome {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-strong);
+  font-size: 12.5px;
+  color: var(--indigo-bright);
+}
+
+/* ── the artefact ─────────────────────────────────────────────────────────
+   The certificate is the only thing here that leaves the building, so it is
+   shown as an object rather than described as a feature. */
+
+.artefact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 148px;
+  gap: 36px;
+  align-items: center;
+  padding: 24px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(99, 102, 241, 0.08), transparent 60%),
+    var(--surface);
+}
+
+.artefact-doc {
+  position: relative;
+  aspect-ratio: 1 / 1.414;
+  background: #f4f4f2;
+  border-radius: 3px;
+  padding: 16px 14px;
+  box-shadow: 0 10px 30px rgba(1, 4, 9, 0.65);
+  transform: rotate(-1.4deg);
+}
+.doc-line { height: 4px; border-radius: 2px; background: #c9ccd2; margin-bottom: 7px; }
+.doc-line-title { height: 8px; width: 62%; background: #2f333c; margin-bottom: 12px; }
+.doc-box { height: 30px; border: 1px solid #b3b7bf; border-radius: 2px; margin: 10px 0 12px; }
+.doc-seal {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: var(--indigo);
+  border: 1.5px solid var(--indigo);
+  border-radius: 3px;
+  padding: 3px 6px;
+  transform: rotate(-7deg);
+  opacity: 0.75;
+}
+
+/* ── the honest gap ───────────────────────────────────────────────────── */
+.unbuilt-item {
+  display: inline-block;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 7px 11px;
+}
+.unbuilt-item:hover { border-color: var(--border-indigo); color: var(--ink); }
+
+/* ── reviewer console ─────────────────────────────────────────────────────
+   Evidence scrolls, the decision does not. The rail is align-self: start
+   because a grid item stretches to its row by default, and a sticky element
+   that is already as tall as its scroll range has nowhere to stick. */
+
+.review-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 18px;
+  align-items: start;
+}
+.review-main { min-width: 0; }
+.review-rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.review-rail::-webkit-scrollbar { width: 6px; }
+.review-rail::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+.review-rail > .card { margin: 0; }
+.review-rail .btn { flex: 1 1 auto; justify-content: center; }
+
+/* A step the agent has not reached yet. Dimmed rather than hidden, so the
+   run is a prediction you can watch being tested rather than a list that
+   appears one item at a time. */
+.step-pending { opacity: 0.45; }
+.step-pending h3 { font-weight: 500; }
+
 /* ── responsive ───────────────────────────────────────────────────────────
    Kept last on purpose: a media query adds no specificity, so any equally
    specific rule declared after it wins and the override silently does
    nothing. */
+
+@media (max-width: 1000px) {
+  .home-hero { grid-template-columns: 1fr; }
+  .path { grid-template-columns: 1fr; }
+  .path-step { border-left: 1px solid var(--border); border-radius: 0; }
+  .path-step + .path-step { border-top: 0; }
+  .path-step:first-child { border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  .path-step:last-child { border-radius: 0 0 var(--r-lg) var(--r-lg); }
+  .path-step + .path-step::before {
+    left: 50%;
+    top: -7px;
+    margin: 0 0 0 -6px;
+    transform: rotate(135deg);
+  }
+  .path-line { min-height: 0; }
+  .artefact { grid-template-columns: 1fr; }
+  .artefact-doc { display: none; }
+  .review-split { grid-template-columns: 1fr; }
+  .review-rail { position: static; max-height: none; overflow: visible; }
+}
 
 @media (max-width: 900px) {
   .shell { grid-template-columns: 1fr; align-content: start; }
@@ -408,4 +624,5 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   .shell > section { max-height: none; }
   .check-row { grid-template-columns: 1fr; gap: 4px; }
   .card { padding: 15px; }
+  .home-h1 { font-size: 30px; }
 }
