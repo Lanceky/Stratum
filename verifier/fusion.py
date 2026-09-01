@@ -47,7 +47,13 @@ PASS, REVIEW, FAIL = "PASS", "REVIEW", "FAIL"
 # Reported, not used to decide. Presence and binding carry the weight because
 # they are the two checks with measured operating points; authenticity is known
 # to be the weakest and its own report says so.
-SCORE_WEIGHTS = {"presence": 0.40, "binding": 0.45, "authenticity": 0.15}
+#
+# Uniqueness is weighted like binding because it rests on the same distances
+# and has its own measured bound. It only appears in claim mode, and weights
+# are renormalised over the checks that ran, so adding it changes no other
+# mode's score.
+SCORE_WEIGHTS = {"presence": 0.40, "binding": 0.45, "authenticity": 0.15,
+                 "uniqueness": 0.45}
 
 # Every check must be accounted for before a gate can pass — including check 2,
 # which frequently cannot run on SD captures.
@@ -61,6 +67,32 @@ SCORE_WEIGHTS = {"presence": 0.40, "binding": 0.45, "authenticity": 0.15}
 # "I could not run" is a perfectly acceptable submission; it costs the gate an
 # automatic PASS but never fails it.
 REQUIRED = ("presence", "authenticity", "binding")
+
+# What each gate mode must account for before it can pass.
+#
+# One-human-one-claim adds check 4 rather than replacing anything: a claim
+# still needs a live, genuine, enrolled person — the sweep only answers the
+# further question of whether that person has already claimed. Omitting it
+# from the requirement would recreate exactly the bypass the note above
+# describes, where staying quiet about a check beats reporting that it did not
+# run, and here staying quiet is worth money.
+MODE_REQUIRED: dict[str, tuple[str, ...]] = {
+    "authorise_action": REQUIRED,
+    "verify_identity": REQUIRED,
+    "one_human_one_claim": REQUIRED + ("uniqueness",),
+}
+
+
+def required_for(mode: str | None) -> tuple[str, ...]:
+    """
+    The checks a mode must report.
+
+    An unknown mode falls back to the strictest set rather than the base one.
+    A typo in a mode string should cost an automatic pass, not grant one.
+    """
+    if mode is None:
+        return REQUIRED
+    return MODE_REQUIRED.get(str(mode), REQUIRED + ("uniqueness",))
 
 
 def _reason_of(payload: dict) -> str:
@@ -156,13 +188,18 @@ class Decision:
                 "checks": [o.as_dict() for o in self.outcomes]}
 
 
-def fuse(results: dict[str, dict]) -> Decision:
+def fuse(results: dict[str, dict], *, mode: str | None = None) -> Decision:
     """
     Combine check results into one verdict.
 
     `results` maps check name to that check's `as_dict()` payload, so callers
     hand over exactly what the endpoints already return and nothing has to be
     reshaped at the boundary.
+
+    `mode` decides only which checks must be *accounted for* — the judgement
+    below is identical for every mode. A claim gate is not a different pipeline
+    with different rules; it is the same pipeline asked to report one more
+    thing.
 
     Order of judgement matters and is deliberate: a violated check outranks a
     missing one, which outranks an unsettled one. Reporting "check 2 could not
@@ -188,7 +225,7 @@ def fuse(results: dict[str, dict]) -> Decision:
     for o in violated:
         reasons.append(f"{o.name}: {o.reason or 'check ran and was not satisfied'}")
 
-    missing = [name for name in REQUIRED if name not in by_name]
+    missing = [name for name in required_for(mode) if name not in by_name]
     absent = [o for o in outcomes if not o.ran]
     # A check that did not run is already accounted for above. Without this it
     # lands in both lists and is reported twice — once as boilerplate and once

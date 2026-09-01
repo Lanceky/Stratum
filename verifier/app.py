@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 import attestation
 import certificate
+import claim as claim_mod
 import nutrient
 from dimensions import STABLE, VOLATILE
 from fixtures import FixtureMissing, budget_status
@@ -35,7 +36,8 @@ from store import Store
 app = FastAPI(title="STRATUM verifier", version="0.1.0")
 
 VERDICTS = {str(GateState.PASS), str(GateState.REVIEW), str(GateState.FAIL)}
-CHECK_NUMBERS = {"presence": 1, "authenticity": 2, "binding": 3}
+CHECK_NUMBERS = {"presence": 1, "authenticity": 2, "binding": 3,
+                 "uniqueness": 4}
 
 # Local store. Xano replaces this as system of record once the instance exists;
 # the transition rules are identical either way, which is the point of keeping
@@ -701,11 +703,12 @@ class BindingRequest(BaseModel):
 
 
 class FusionRequest(BaseModel):
-    """Results from checks 1-3, in whatever combination the caller has."""
+    """Results from the checks, in whatever combination the caller has."""
 
     presence: dict | None = None
     authenticity: dict | None = None
     binding: dict | None = None
+    uniqueness: dict | None = None
     gate_id: str | None = None
 
 
@@ -1044,17 +1047,22 @@ def decide(body: FusionRequest) -> dict:
         ("presence", body.presence),
         ("authenticity", body.authenticity),
         ("binding", body.binding),
+        ("uniqueness", body.uniqueness),
     ) if payload is not None}
 
     if not results:
         raise HTTPException(422, "no check results submitted")
 
-    decision = fuse(results).as_dict()
+    # The mode comes from the gate, never from the request. A caller who could
+    # name their own mode could name the one with the shortest list of required
+    # checks, which is the whole guard.
+    gate = store.get("gates", body.gate_id) if body.gate_id else None
+    if body.gate_id and gate is None:
+        raise HTTPException(404, "no such gate")
+
+    decision = fuse(results, mode=gate["mode"] if gate else None).as_dict()
 
     if body.gate_id:
-        if store.get("gates", body.gate_id) is None:
-            raise HTTPException(404, "no such gate")
-
         # Persist what was fused, not just what was concluded. Without this the
         # verdict sits in the audit chain with no record of the evidence it
         # rested on, and a reviewer opening the gate later sees a referral with
@@ -1090,3 +1098,229 @@ def decide(body: FusionRequest) -> dict:
         decision["state"] = gate["state"]
 
     return decision
+
+
+# ── one human, one claim ──────────────────────────────────────────────────
+class EnrolRequest(BaseModel):
+    """Put a person on a campaign's roster."""
+
+    context: str
+    subject_ref: str
+    capture: CaptureBundle
+
+
+class ClaimRequest(BaseModel):
+    """
+    A wallet asking to claim, with the capture that should prove it is a
+    person who has not claimed before.
+    """
+
+    context: str
+    address: str
+    capture: CaptureBundle
+    gate_id: str | None = None
+    presence: dict | None = None
+    authenticity: dict | None = None
+
+
+def _tenant() -> str:
+    """The demo tenant. Claims are a demo path until real tenancy exists."""
+    global _demo_workflow
+    if _demo_workflow is None:
+        demo_gate(60)
+    row = store.db.execute("SELECT id FROM tenants LIMIT 1").fetchone()
+    return row["id"]
+
+
+@app.post("/claims/enrol", status_code=201)
+def claim_enrol(body: EnrolRequest) -> dict:
+    """
+    Add a capture to a context's roster.
+
+    Enrolment is deliberately separate from claiming. A roster that grew as a
+    side effect of claiming could never answer "was this person already here?"
+    for the first claimant — they would have just added themselves.
+    """
+    from normalise import normalise_bundle
+
+    if not claim_mod.CONTEXT.match(body.context):
+        raise HTTPException(422, "context is not a valid campaign identifier")
+
+    bundle = normalise_bundle(body.capture.model_dump())
+    if not bundle["identity_vector"] and not bundle["constellations"]:
+        raise HTTPException(422, "capture carries no comparable signal, so it "
+                                 "would sit on the roster without ever being "
+                                 "comparable to a claim")
+
+    row = store.create_enrolment(_tenant(), body.subject_ref, bundle,
+                                 context=body.context)
+    return {"enrolment_id": row["id"], "context": body.context,
+            "roster_size": len(store.roster(body.context))}
+
+
+@app.get("/claims/roster/{context}")
+def claim_roster(context: str) -> dict:
+    """
+    How large the sweep would be, and what that costs in confidence.
+
+    Exposed because the false-match probability is a function of this number,
+    so a caller cannot interpret a claim result without it.
+    """
+    from checks.uniqueness import PER_COMPARISON_FMR, family_false_match
+
+    size = len(store.roster(context))
+    return {"context": context, "roster_size": size,
+            "per_comparison_false_match_bound": PER_COMPARISON_FMR,
+            "false_match_across_a_full_sweep": round(
+                family_false_match(size), 5),
+            "claims_recorded": store.db.execute(
+                "SELECT COUNT(*) AS n FROM claims WHERE context = ?",
+                (context,)).fetchone()["n"]}
+
+
+@app.post("/claims/verify")
+def claim_verify(body: ClaimRequest) -> dict:
+    """
+    Sweep a capture against a context's roster and decide whether it may claim.
+
+    The sweep runs before anything is written. A DUPLICATE is a finding, not an
+    error: it is returned with the enrolment it matched and the false-match
+    probability that finding carries, because a campaign operator refusing
+    someone's allocation should see the number their refusal rests on.
+
+    Nothing is signed here. Signing happens at `/claims/{gate}/signature`,
+    after the gate has actually settled — a signature issued alongside a
+    REVIEW verdict would be a signature over an unfinished decision.
+    """
+    from checks.uniqueness import sweep
+    from fusion import fuse
+    from normalise import normalise_bundle
+
+    if not claim_mod.CONTEXT.match(body.context):
+        raise HTTPException(422, "context is not a valid campaign identifier")
+    if not claim_mod.ADDRESS.match(body.address or ""):
+        raise HTTPException(422, "address is not a 20-byte hex address")
+
+    probe = normalise_bundle(body.capture.model_dump())
+    if not probe["identity_vector"] and not probe["constellations"]:
+        raise HTTPException(422, "capture carries no comparable signal")
+
+    roster = [(r["id"], json.loads(r["identity_vector"]))
+              for r in store.roster(body.context)]
+    result = sweep(probe, roster).as_dict()
+
+    gate = None
+    if body.gate_id:
+        gate = store.get("gates", body.gate_id)
+        if gate is None:
+            raise HTTPException(404, "no such gate")
+        if GateMode(gate["mode"]) is not GateMode.ONE_HUMAN_ONE_CLAIM:
+            raise HTTPException(
+                409, f"gate is in {gate['mode']} mode; a uniqueness sweep "
+                     "belongs to a one_human_one_claim gate")
+        store.add_evidence(body.gate_id, 4, result["score"], {
+            "verdict": result["verdict"], "passed": result["passed"],
+            "ran": result["ran"], "reason": result["reason"],
+            "roster_size": result["roster_size"],
+            "comparisons_run": result["comparisons_run"],
+            "comparisons_skipped": result["comparisons_skipped"],
+            "nearest": result["nearest"],
+            "false_match": result["false_match"],
+            "limitations": result["limitations"],
+        })
+
+    # Fused here rather than left to the caller, so the mode's full requirement
+    # is applied: a claim that reports a clean sweep but never ran presence is
+    # not a claim, and returning the sweep alone would let it look like one.
+    submitted = {"uniqueness": result}
+    if body.presence is not None:
+        submitted["presence"] = body.presence
+    if body.authenticity is not None:
+        submitted["authenticity"] = body.authenticity
+    decision = fuse(submitted, mode=str(GateMode.ONE_HUMAN_ONE_CLAIM)).as_dict()
+
+    out = {"uniqueness": result, "decision": decision,
+           "context": body.context, "address": body.address}
+    if gate is not None:
+        out["gate_id"] = gate["id"]
+    return out
+
+
+class SignatureRequest(BaseModel):
+    context: str
+    address: str
+    enrolment_id: str
+
+
+@app.post("/claims/{gate_id}/signature")
+def claim_signature(gate_id: str, body: SignatureRequest) -> dict:
+    """
+    Issue the claim as something a contract can verify.
+
+    Only for a settled gate, using the same rule that governs certificates: a
+    signature over a gate still in flight would circulate as a finished
+    authorisation for a question nobody had answered.
+
+    The verdict is recovered from the audit chain rather than read off the
+    gate's current state. A gate a human approved reads SIGNED, which is not a
+    finding — signing "SIGNED" would lose the fact that the sweep was
+    ambiguous and a named person resolved it, which is the distinction most
+    worth putting on chain.
+
+    The write happens before the signature. If the unique index refuses this as
+    a double claim, no signature is produced — issuing one and then failing to
+    record it would put a valid, unrecorded authorisation into the world.
+    """
+    import sqlite3
+
+    gate = store.get("gates", gate_id)
+    if gate is None:
+        raise HTTPException(404, "no such gate")
+    if not certificate.sealable(gate["state"]):
+        raise HTTPException(
+            409, f"gate is {gate['state']}, which is not a settled verdict. A "
+                 "signature is an authorisation, and an unfinished gate has "
+                 "not authorised anything")
+
+    events = store.chain(gate_id)
+    verdict = attestation.outcome_of(gate, events)
+
+    reviews = store.reviews_for(gate_id)
+    decided_by = f"reviewer:{reviews[-1]['reviewer_id']}" if reviews else "machine"
+
+    evidence = [e for e in store.evidence_for(gate_id) if int(e["check_no"]) == 4]
+    detail = json.loads(evidence[-1]["detail"]) if evidence else {}
+
+    try:
+        built = claim_mod.build(
+            context=body.context, address=body.address,
+            enrolment_id=body.enrolment_id, verdict=verdict, gate_id=gate_id,
+            chain_head=events[-1]["hash"] if events else "",
+            roster_size=int(detail.get("roster_size", 0)),
+            comparisons=int(detail.get("comparisons_run", 0)),
+            false_match_bound=float(
+                (detail.get("false_match") or {}).get("across_this_sweep", 0.0)),
+            decided_by=decided_by,
+        )
+    except claim_mod.NotSignable as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    try:
+        signed = claim_mod.sign(built)
+    except claim_mod.NotSignable as exc:
+        # 501, not 500: the request was valid and the server simply has no key
+        # configured. A 500 would send a caller looking for a bug.
+        raise HTTPException(501, str(exc)) from exc
+
+    try:
+        store.add_claim(gate_id, body.enrolment_id, body.context,
+                        built.nullifier, body.address, verdict, decided_by,
+                        signed["signature"])
+    except sqlite3.IntegrityError as exc:
+        existing = store.claim_for(body.context, built.nullifier)
+        raise HTTPException(
+            409, f"this person has already claimed in {body.context} "
+                 f"(claim {existing['id'] if existing else 'unknown'}). One "
+                 "human, one claim, is the whole point") from exc
+
+    return signed

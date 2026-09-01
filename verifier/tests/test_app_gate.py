@@ -110,5 +110,13 @@ def test_bad_state_name_is_rejected_before_reaching_the_store(client, gate_id):
 
 
 def test_schema_endpoint_lists_all_tables(client):
+    """
+    Compared against the schema module rather than a number typed here. A
+    hardcoded count fails on every table added, which trains you to bump it
+    without looking — the one case where it should fail is a table the export
+    silently drops, and that is exactly what bumping the number hides.
+    """
+    import schema
+
     names = {t["name"] for t in client.get("/schema").json()["tables"]}
-    assert len(names) == 9 and "audit_events" in names
+    assert names == set(schema.TABLES) and "audit_events" in names
