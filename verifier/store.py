@@ -15,8 +15,10 @@ rejected attempt by an agent to sign is itself permanent evidence.
 
 from __future__ import annotations
 
+import functools
 import json
 import sqlite3
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -38,8 +40,36 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
+def _locked(fn):
+    """
+    Serialise one whole store operation.
+
+    Not only for SQLite's sake, though one connection shared across the
+    server's threadpool is reason enough. The operations that matter here are
+    read-then-write pairs, and holding the lock for just the write would not
+    save them:
+
+      * `audit` reads the chain head, then writes the block that points at it.
+        Interleaved, two appends read the same head and write two blocks
+        claiming the same parent — a forked chain, which verify_chain then
+        reports as tampering that never happened.
+      * `gate_transition` reads the state, checks the move is legal, then
+        writes the new state. Interleaved, two callers both read REQUESTED and
+        both pass a check that was only ever true for one of them.
+
+    Reentrant because the public methods call each other: `create_gate` calls
+    `audit`, `expire_if_due` calls `gate_transition`.
+    """
+    @functools.wraps(fn)
+    def go(self, *args, **kwargs):
+        with self._lock:
+            return fn(self, *args, **kwargs)
+    return go
+
+
 class Store:
     def __init__(self, path: str | Path = ":memory:"):
+        self._lock = threading.RLock()
         self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
@@ -48,6 +78,7 @@ class Store:
         self.db.commit()
 
     # ── helpers ───────────────────────────────────────────────────────────
+    @_locked
     def _insert(self, table: str, row: dict) -> dict:
         row = {"id": row.get("id") or _uuid(), "created_at": _now(), **row}
         cols = ",".join(row)
@@ -57,10 +88,12 @@ class Store:
         self.db.commit()
         return row
 
+    @_locked
     def get(self, table: str, id_: str) -> dict | None:
         r = self.db.execute(f"SELECT * FROM {table} WHERE id = ?", (id_,)).fetchone()
         return dict(r) if r else None
 
+    @_locked
     def gates_in_state(self, state: GateState | str, limit: int = 50) -> list[dict]:
         """
         The review queue.
@@ -74,12 +107,27 @@ class Store:
             (str(GateState(state)), limit)).fetchall()
         return [dict(r) for r in rows]
 
+    @_locked
+    def census(self) -> dict[str, int]:
+        """
+        How many gates exist, by state.
+
+        Separate from `gates_in_state` because that one takes a limit and
+        returns rows: counting by listing would silently stop at 50 and report
+        a total that is really a page size.
+        """
+        rows = self.db.execute(
+            "SELECT state, COUNT(*) AS n FROM gates GROUP BY state").fetchall()
+        return {r["state"]: r["n"] for r in rows}
+
+    @_locked
     def evidence_for(self, gate_id: str) -> list[dict]:
         rows = self.db.execute(
             "SELECT * FROM evidence WHERE gate_id = ? ORDER BY check_no ASC",
             (gate_id,)).fetchall()
         return [dict(r) for r in rows]
 
+    @_locked
     def reviews_for(self, gate_id: str) -> list[dict]:
         rows = self.db.execute(
             "SELECT * FROM reviews WHERE gate_id = ? ORDER BY created_at ASC",
@@ -87,6 +135,7 @@ class Store:
         return [dict(r) for r in rows]
 
     # ── ledger ────────────────────────────────────────────────────────────
+    @_locked
     def _head(self, gate_id: str) -> str:
         # rowid, not ts: two events can share a timestamp, and rowid is the
         # same ordering chain() reads back in.
@@ -95,6 +144,7 @@ class Store:
             "ORDER BY rowid DESC LIMIT 1", (gate_id,)).fetchone()
         return r["hash"] if r else ledger.GENESIS
 
+    @_locked
     def audit(self, gate_id: str, type_: str, payload: Any = None) -> dict:
         """Append one event. The only writer of audit_events."""
         prev, ts = self._head(gate_id), _now()
@@ -107,15 +157,18 @@ class Store:
             "ts": ts,
         })
 
+    @_locked
     def chain(self, gate_id: str) -> list[dict]:
         rows = self.db.execute(
             "SELECT * FROM audit_events WHERE gate_id = ? ORDER BY rowid",
             (gate_id,)).fetchall()
         return [dict(r) for r in rows]
 
+    @_locked
     def verify_chain(self, gate_id: str) -> ledger.ChainResult:
         return ledger.verify_chain(self.chain(gate_id))
 
+    @_locked
     def escalations(self, gate_id: str) -> list[dict]:
         """
         Every time a non-human reached for a step only a human may take.
@@ -135,6 +188,7 @@ class Store:
             out.append({"at": e["ts"], "hash": e["hash"], **payload})
         return out
 
+    @_locked
     def rewrite_past_event(self, gate_id: str, index: int,
                            payload: Any) -> dict:
         """
@@ -175,6 +229,7 @@ class Store:
                 "before": before, "after": after}
 
     # ── gates ─────────────────────────────────────────────────────────────
+    @_locked
     def create_gate(self, workflow_id: str, mode: GateMode | str,
                     challenge_spec: dict | None = None,
                     ttl_s: int = DEFAULT_TTL_S) -> dict:
@@ -193,6 +248,7 @@ class Store:
     def is_expired(self, gate: dict, at: datetime | None = None) -> bool:
         return (at or datetime.now(UTC)) > datetime.fromisoformat(gate["expires_at"])
 
+    @_locked
     def gate_transition(self, gate_id: str, to: GateState | str, actor: Actor | str,
                         detail: dict | None = None,
                         at: datetime | None = None) -> dict:
@@ -225,6 +281,7 @@ class Store:
         })
         return self.get("gates", gate_id)
 
+    @_locked
     def expire_if_due(self, gate_id: str, at: datetime | None = None) -> dict:
         gate = self.get("gates", gate_id)
         if gate and self.is_expired(gate, at) and GateState(gate["state"]) not in (
@@ -234,6 +291,7 @@ class Store:
         return gate
 
     # ── child records ─────────────────────────────────────────────────────
+    @_locked
     def add_capture(self, gate_id: str, frame_index: int, derived: dict,
                     pc_task_id: str | None = None) -> dict:
         return self._insert("captures", {
@@ -241,6 +299,7 @@ class Store:
             "pc_task_id": pc_task_id, "derived": ledger.canonical_json(derived),
         })
 
+    @_locked
     def add_evidence(self, gate_id: str, check_no: int, score: float,
                      detail: dict | None = None) -> dict:
         row = self._insert("evidence", {
@@ -250,6 +309,7 @@ class Store:
         self.audit(gate_id, "evidence", {"check_no": check_no, "score": score})
         return row
 
+    @_locked
     def add_review(self, gate_id: str, reviewer_id: str, decision: str,
                    triggering_signal: str = "", notes: str = "") -> dict:
         row = self._insert("reviews", {
@@ -259,6 +319,7 @@ class Store:
         self.audit(gate_id, "review", {"reviewer_id": reviewer_id, "decision": decision})
         return row
 
+    @_locked
     def add_attestation(self, gate_id: str, sha256: str,
                         dns_record_id: str | None = None,
                         sealed_pdf_url: str | None = None) -> dict:
@@ -269,6 +330,7 @@ class Store:
         self.audit(gate_id, "attestation", {"sha256": sha256})
         return row
 
+    @_locked
     def create_tenant(self, domain: str, api_key_hash: str,
                       policy_defaults: dict | None = None) -> dict:
         return self._insert("tenants", {
@@ -276,6 +338,7 @@ class Store:
             "policy_defaults": ledger.canonical_json(policy_defaults or {}),
         })
 
+    @_locked
     def create_workflow(self, tenant_id: str, kind: str, payload: dict | None = None,
                         agent_session_id: str | None = None) -> dict:
         return self._insert("workflows", {
