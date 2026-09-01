@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 
 import './theme.css'
-import { Card, Mark } from './ui.jsx'
+import { Mark, IdentityCard, KeyGlyph, middle } from './ui.jsx'
 import Gate from './gate/Gate.jsx'
 import Agent from './agent/Agent.jsx'
 import Review from './review/Review.jsx'
@@ -81,68 +81,81 @@ function useSystem() {
 }
 
 /**
- * Live numbers, not a screenshot of them.
+ * The deployment, drawn as its own credential.
  *
- * The claim on this page is that authorisations are actually being recorded.
- * Stating that in prose and then showing nothing asks to be taken on trust,
- * which is the one thing this system is built not to require.
+ * Two claims are being made on this page — that authorisations are really
+ * being recorded, and that something signs them — and both are about the same
+ * object: this running server. So they are one card rather than two panels.
+ * Stating either in prose and showing nothing asks to be taken on trust, which
+ * is the one thing this system is built not to require.
+ *
+ * Every value is read from /health. A build with no key configured says so
+ * instead of advertising a signature it cannot produce, which is the claim
+ * here it would be most damaging to get wrong.
  */
-function SystemPanel() {
-  const sys = useSystem()
-
-  if (!sys) return <Card><p className="dim small" style={{ margin: 0 }}>Reading system state…</p></Card>
-
-  if (sys.down) {
+function SystemCard({ sys }) {
+  if (!sys) {
     return (
-      <Card>
-        <p className="eyebrow" style={{ marginTop: 0 }}>system</p>
-        <p className="small" style={{ margin: 0, color: 'var(--red)' }}>
-          The verifier is not answering. Nothing on this page can be
-          demonstrated until it is running — <code className="mono">make verifier</code>.
-        </p>
-      </Card>
+      <IdentityCard
+        glyph={<KeyGlyph />} eyebrow="issuer" title="reading system state…"
+        tone="amber" status="waiting"
+      />
     )
   }
 
+  if (sys.down) {
+    return (
+      <IdentityCard
+        glyph={<KeyGlyph />}
+        eyebrow="issuer"
+        title="verifier not answering"
+        tone="red"
+        status="offline"
+        note={<>Nothing on this page can be demonstrated until it is running —{' '}
+          <code className="mono">make verifier</code>.</>}
+      />
+    )
+  }
+
+  const iss = sys.issuer ?? {}
+  const led = iss.ledger ?? {}
+  const waiting = sys.gates?.awaiting_review ?? 0
+
   return (
-    <Card>
-      <div className="between" style={{ marginBottom: 14 }}>
-        <p className="eyebrow" style={{ margin: 0 }}>system</p>
-        <span className="badge badge-pass">live</span>
-      </div>
-
-      <div className="stat-grid">
-        <div>
-          <div className="stat-n">{sys.gates?.total ?? 0}</div>
-          <div className="dim small">gates opened</div>
-        </div>
-        <div>
-          <div className="stat-n" style={{ color: sys.gates?.awaiting_review ? 'var(--amber-bright)' : undefined }}>
-            {sys.gates?.awaiting_review ?? 0}
-          </div>
-          <div className="dim small">awaiting a human</div>
-        </div>
-      </div>
-
-      <div className="rule" />
-
-      <div className="between small">
-        <span className="dim">sensor calls</span>
-        <span className="mono">{sys.api_mode}</span>
-      </div>
-      <div className="between small" style={{ marginTop: 6 }}>
-        <span className="dim">metered units left</span>
-        <span className="mono">{sys.units?.remaining ?? '—'} / {sys.units?.ceiling ?? '—'}</span>
-      </div>
-      <p className="dim small" style={{ margin: '12px 0 0' }}>
-        The sensor grant is metered and cannot be topped up, so its calls run
-        from recordings. Everything else is live.
-      </p>
-    </Card>
+    <IdentityCard
+      glyph={<KeyGlyph />}
+      eyebrow="issuer"
+      title={iss.can_sign ? middle(iss.address, 10) : 'no signing key configured'}
+      tone={iss.can_sign ? 'indigo' : 'amber'}
+      status={iss.can_sign ? 'signing' : 'unsigned'}
+      stats={[
+        { k: 'gates opened', v: sys.gates?.total ?? 0 },
+        { k: 'awaiting a human', v: waiting,
+          tone: waiting ? 'var(--amber-bright)' : undefined },
+      ]}
+      rows={[
+        { k: 'scheme', v: iss.scheme ?? '—' },
+        { k: 'blocks written', v: led.events ?? 0, mono: true },
+        { k: 'newest block', v: middle(led.latest, 7), mono: true, title: led.latest },
+        { k: 'sensor calls', v: sys.api_mode, mono: true },
+        { k: 'metered units left',
+          v: `${sys.units?.remaining ?? '—'} / ${sys.units?.ceiling ?? '—'}`,
+          mono: true },
+      ]}
+      note={iss.can_sign
+        ? <>The sensor grant is metered and cannot be topped up, so its calls run
+          from recordings. Everything else is live. The key is a demo key held in
+          the server's environment; production belongs in an HSM.</>
+        : <>Nothing this build produces can be verified on chain. Shown rather
+          than hidden.</>}
+      footer={led.at ? `last block ${led.at.slice(0, 19).replace('T', ' ')} UTC`
+        : 'nothing written yet'}
+    />
   )
 }
 
 function Home() {
+  const sys = useSystem()
   return (
     <main style={{ minHeight: '100vh' }}>
       <div className="topbar">
@@ -168,7 +181,7 @@ function Home() {
               refusal is recorded, because that is what an auditor came for.
             </p>
           </div>
-          <SystemPanel />
+          <SystemCard sys={sys} />
         </section>
 
         <section>

@@ -437,15 +437,6 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   text-wrap: balance;
 }
 
-.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.stat-n {
-  font-size: 30px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  margin-bottom: 5px;
-  font-variant-numeric: tabular-nums;
-}
 
 .path { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
 
@@ -654,7 +645,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   line-height: 1.55;
 }
 
-.second-points strong { color: var(--ink-1); font-weight: 600; }
+.second-points strong { color: var(--ink); font-weight: 600; }
 
 /* ── the artefact ─────────────────────────────────────────────────────────
    The certificate is the only thing here that leaves the building, so it is
@@ -751,6 +742,209 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
    appears one item at a time. */
 .step-pending { opacity: 0.45; }
 .step-pending h3 { font-weight: 500; }
+
+/* ── the identity card ────────────────────────────────────────────────────
+   The one element here drawn as an object rather than as a panel: the visual
+   form of a credential, standing on the page on its own.
+
+   It is built from the same tokens as every other surface, one step lighter
+   than the page. Introducing a separate neutral charcoal would have matched
+   the reference more literally and looked wrong in place — every other surface
+   here carries a slight blue cast, and a truly neutral card among them reads
+   as a foreign element pasted in rather than as the system's own output.
+
+   Depth comes from a hairline border and ambient light, not from a drop
+   shadow. A shadow says "floating above"; a credential is not hovering over
+   anything, it is a flat object lit from one corner. The faint technical grid
+   behind it is the page's own backdrop, so the card does not have to carry a
+   backdrop of its own to sit in. */
+
+.idcard {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(99, 102, 241, 0.16), transparent 58%),
+    var(--surface-2);
+  /* A single hairline of light along the top edge, the way a physical card
+     catches light on its bevel. Not a glow — the border still does the work. */
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+.idcard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.idcard-glyph {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--indigo-line);
+  border-radius: var(--r);
+  color: var(--indigo-bright);
+  background: rgba(99, 102, 241, 0.09);
+}
+
+.idcard-glyph svg {
+  width: 22px;
+  height: 22px;
+  /* The glow sits on the strokes themselves, so it follows the shape instead
+     of forming a rectangle behind the icon. */
+  filter: drop-shadow(0 0 7px rgba(129, 140, 248, 0.55));
+}
+
+.idcard-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  padding: 4px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+
+.idcard-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+.idcard-eyebrow {
+  margin: 0 0 5px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.idcard-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.idcard-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.idcard-stat-n {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.idcard-stat-k {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.idcard-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px 16px;
+  margin: 20px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+}
+
+.idcard-rows dt {
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.idcard-rows dd {
+  margin: 0;
+  color: var(--ink-2);
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idcard-rows dd.mono { font-size: 11.5px; color: var(--ink); }
+
+.idcard-note {
+  margin: 18px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* The deployment stamp. Held at low opacity because it is not for reading —
+   it is there so the card is traceable to one run of one server, which is the
+   difference between a credential and a picture of one. Pushed to the bottom
+   so two cards of different content still line up along their last rule. */
+.idcard-foot {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tones. The accent carries meaning everywhere else in this console, so it
+   does here too: indigo for an identity in good standing, amber for one a
+   human still has to settle, red for a refusal. A refusal is drawn as a card
+   at all — rather than as an error — because a signed refusal is a real
+   credential and a contract needs to be able to hold one. */
+.idcard-amber {
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(210, 153, 34, 0.16), transparent 58%),
+    var(--surface-2);
+}
+.idcard-amber .idcard-glyph {
+  color: var(--amber-bright);
+  border-color: rgba(210, 153, 34, 0.35);
+  background: var(--amber-dim);
+}
+.idcard-amber .idcard-glyph svg { filter: drop-shadow(0 0 7px rgba(227, 179, 65, 0.5)); }
+.idcard-amber .idcard-dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+
+.idcard-red {
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(248, 81, 73, 0.14), transparent 58%),
+    var(--surface-2);
+}
+.idcard-red .idcard-glyph {
+  color: var(--red);
+  border-color: rgba(248, 81, 73, 0.35);
+  background: var(--red-dim);
+}
+.idcard-red .idcard-glyph svg { filter: drop-shadow(0 0 7px rgba(248, 81, 73, 0.45)); }
+.idcard-red .idcard-dot { background: var(--red); box-shadow: 0 0 6px var(--red); }
 
 /* ── responsive ───────────────────────────────────────────────────────────
    Kept last on purpose: a media query adds no specificity, so any equally

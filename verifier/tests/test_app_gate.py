@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import app as appmod  # noqa: E402
+import claim  # noqa: E402
 from store import Store  # noqa: E402
 
 
@@ -62,6 +63,49 @@ def test_health_total_follows_a_transition(client, gate_id):
     assert after["total"] == before["total"]
     assert after["by_state"]["CHALLENGED"] == before["by_state"].get("CHALLENGED", 0) + 1
     assert after["by_state"].get("REQUESTED", 0) == before["by_state"]["REQUESTED"] - 1
+
+
+def test_health_reports_who_signs(client):
+    """
+    The landing page draws the issuer as a credential. If `can_sign` were
+    reported from the presence of the variable rather than from a key that
+    actually loads, the page would advertise a signature the server cannot
+    produce — the one claim on it most damaging to get wrong.
+    """
+    iss = client.get("/health").json()["issuer"]
+
+    assert iss["can_sign"] is (iss["address"] is not None)
+    assert iss["scheme"] == claim.SCHEME
+    if iss["can_sign"]:
+        assert iss["address"].startswith("0x")
+
+
+def test_health_ledger_grows_as_events_are_written(client, gate_id):
+    """
+    `blocks written` has to be the count of the audit table, not of gates. A
+    number that only moved when a gate was created would sit still through the
+    entire demo and read as a broken counter.
+    """
+    before = client.get("/health").json()["issuer"]["ledger"]
+    _move(client, gate_id, "CHALLENGED", "agent")
+    after = client.get("/health").json()["issuer"]["ledger"]
+
+    assert after["events"] > before["events"]
+    assert after["latest"] != before["latest"]
+    assert after["at"] >= before["at"]
+
+
+def test_ledger_latest_is_the_newest_block_of_some_chain(client, gate_id):
+    """
+    There is no global chain — each gate carries its own — so `latest` is the
+    newest block across all of them and must be a real block, not a root hash
+    computed over the table.
+    """
+    _move(client, gate_id, "CHALLENGED", "agent")
+    latest = client.get("/health").json()["issuer"]["ledger"]["latest"]
+
+    hashes = {e["hash"] for e in client.get(f"/gates/{gate_id}/audit").json()["events"]}
+    assert latest in hashes
 
 
 def test_gate_starts_in_requested(client, gate_id):

@@ -138,3 +138,104 @@ export function Pending({ title, step, line }) {
     </main>
   )
 }
+
+/**
+ * A credential, drawn as an object rather than as a panel.
+ *
+ * Every other card here is a container for part of a console — something you
+ * work in. This one is something you look at: the visual form of an identity
+ * the system has issued. So it gets its own stage, its own light, and a
+ * deliberately small amount of information.
+ *
+ * It is presentational and holds no view of what it is showing, because it is
+ * used for two different things — the deployment's own signing identity, and
+ * an issued claim — and a component that knew the difference would end up
+ * carrying both stories. Every value it renders is passed in from the server;
+ * there is no specimen mode, because a card that could show an invented
+ * identity would be indistinguishable at a glance from one showing a real one.
+ *
+ * The sections are optional and stack in a fixed order: identity, then live
+ * counts, then fixed facts, then a caveat, then the deployment stamp. Fixed,
+ * because the order is the argument — who this is, what it has done, how to
+ * check it, and what it does not cover.
+ */
+export function IdentityCard({
+  glyph, eyebrow, title, status, tone = 'indigo', stats = [], rows = [],
+  note, footer, children,
+}) {
+  return (
+    <article className={`idcard idcard-${tone}`}>
+      <header className="idcard-head">
+        <span className="idcard-glyph">{glyph ?? <ShieldGlyph />}</span>
+        {status && (
+          <span className="idcard-status"><i className="idcard-dot" />{status}</span>
+        )}
+      </header>
+
+      {eyebrow && <p className="idcard-eyebrow">{eyebrow}</p>}
+      <h3 className="idcard-title">{title}</h3>
+
+      {stats.length > 0 && (
+        <div className="idcard-stats">
+          {stats.map((s) => (
+            <div key={s.k}>
+              <div className="idcard-stat-n" style={s.tone ? { color: s.tone } : undefined}>
+                {s.v}
+              </div>
+              <div className="idcard-stat-k">{s.k}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <dl className="idcard-rows">
+          {rows.map((r) => (
+            <React.Fragment key={r.k}>
+              <dt>{r.k}</dt>
+              <dd className={r.mono ? 'mono' : undefined} title={r.title}>{r.v}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+      )}
+
+      {children}
+      {note && <p className="idcard-note">{note}</p>}
+      {footer && <p className="idcard-foot mono">{footer}</p>}
+    </article>
+  )
+}
+
+export function ShieldGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 2.5 4.5 5.6v6.2c0 4.6 3.1 8.4 7.5 9.7 4.4-1.3 7.5-5.1 7.5-9.7V5.6Z" />
+      <path d="m8.9 12.1 2.2 2.2 4.1-4.5" />
+    </svg>
+  )
+}
+
+export function KeyGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8.4" cy="12" r="3.5" />
+      <path d="M11.9 12H21" />
+      <path d="M17.6 12v3" />
+      <path d="M20.4 12v2.1" />
+    </svg>
+  )
+}
+
+/**
+ * Truncated in the middle, not at the end. Hashes and addresses from the same
+ * origin often share a prefix, so an end-truncated pair can look identical
+ * while differing; keeping both ends is what someone comparing against a block
+ * explorer actually reads.
+ */
+export function middle(value, keep = 6) {
+  if (!value) return '—'
+  const s = String(value)
+  return s.length <= keep * 2 + 1 ? s : `${s.slice(0, keep)}…${s.slice(-keep)}`
+}

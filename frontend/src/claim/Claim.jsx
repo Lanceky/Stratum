@@ -20,7 +20,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Badge, Card, Hash, Mark, Spinner } from '../ui.jsx'
+import { Badge, Card, IdentityCard, Mark, ShieldGlyph, Spinner, middle }
+  from '../ui.jsx'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
@@ -380,18 +381,28 @@ export default function Claim() {
                         <code className="mono">ecrecover</code> over the message
                         and compares the result against the issuer.</>}
                   </p>
-                  <dl className="kv small">
-                    <dt>verdict</dt>
-                    <dd><Badge value={signed.body.claim.verdict} /></dd>
-                    <dt>nullifier</dt>
-                    <dd><Hash value={signed.body.claim.nullifier} chars={22} /></dd>
-                    <dt>authorised by</dt>
-                    <dd>{signed.body.claim.decided_by}</dd>
-                    <dt>issuer</dt>
-                    <dd><code className="mono">{signed.body.issuer}</code></dd>
-                    <dt>scheme</dt>
-                    <dd>{signed.body.scheme}</dd>
-                  </dl>
+                  {/* The same card the landing page uses for the issuer, now
+                      holding what was actually issued. Amber, not indigo, when
+                      the verdict is a refusal: it is still a real credential a
+                      contract can hold, and colouring it like an approval
+                      would make the one field that matters the easiest to
+                      miss. */}
+                  <IdentityCard
+                    glyph={<ShieldGlyph />}
+                    eyebrow={`claim · ${context}`}
+                    title={middle(signed.body.claim.address, 10)}
+                    status={signed.settled === 'FAIL' ? 'refused' : 'authorised'}
+                    tone={signed.settled === 'FAIL' ? 'red' : 'indigo'}
+                    rows={[
+                      { k: 'verdict', v: <Badge value={signed.body.claim.verdict} /> },
+                      { k: 'nullifier', v: middle(signed.body.claim.nullifier, 8),
+                        mono: true, title: signed.body.claim.nullifier },
+                      { k: 'authorised by', v: signed.body.claim.decided_by },
+                      { k: 'issuer', v: middle(signed.body.issuer, 8), mono: true,
+                        title: signed.body.issuer },
+                    ]}
+                    footer={signed.body.scheme}
+                  />
                   <p className="small dim">
                     The nullifier stops a second wallet. Derived from enrolment
                     and campaign together, so it differs per campaign and cannot

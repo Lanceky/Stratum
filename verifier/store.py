@@ -145,6 +145,23 @@ class Store:
         return r["hash"] if r else ledger.GENESIS
 
     @_locked
+    def ledger_summary(self) -> dict:
+        """
+        How much has been written, and the newest block written.
+
+        There is no single global chain — each gate carries its own, so that
+        one tenant's traffic cannot reorder another's history. `latest` is
+        therefore the most recent block across all of them, not a root hash,
+        and is labelled that way wherever it is shown.
+        """
+        row = self.db.execute(
+            "SELECT COUNT(*) AS n, "
+            "(SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1) AS latest, "
+            "(SELECT ts FROM audit_events ORDER BY rowid DESC LIMIT 1) AS ts "
+            "FROM audit_events").fetchone()
+        return {"events": row["n"], "latest": row["latest"], "at": row["ts"]}
+
+    @_locked
     def audit(self, gate_id: str, type_: str, payload: Any = None) -> dict:
         """Append one event. The only writer of audit_events."""
         prev, ts = self._head(gate_id), _now()

@@ -48,6 +48,11 @@ from eth_account.messages import encode_defunct
 SECRET_ENV = "STRATUM_NULLIFIER_SECRET"
 KEY_ENV = "STRATUM_SIGNING_KEY"
 
+# Named once. A verifying contract selects its recovery routine from this
+# string, so two copies that drift apart would have the certificate describe
+# one scheme while the signature was produced under another.
+SCHEME = "EIP-191 personal_sign"
+
 # EIP-55 is not checked here — a checksum is a typo guard, and rejecting a
 # lowercase address that is otherwise valid would refuse a correct claim.
 ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -199,7 +204,7 @@ def sign(claim: Claim) -> dict:
         "r": hex(signed.r),
         "s": hex(signed.s),
         "issuer": Account.from_key(key).address,
-        "scheme": "EIP-191 personal_sign",
+        "scheme": SCHEME,
         "dev_secret": using_dev_secret(),
         "limitations": LIMITATIONS,
     }

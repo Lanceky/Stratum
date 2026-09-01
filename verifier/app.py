@@ -54,6 +54,7 @@ class HealthResponse(BaseModel):
     api_mode: str
     units: dict
     gates: dict
+    issuer: dict
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -68,6 +69,14 @@ def health() -> HealthResponse:
         # landing page cannot disagree with the audit trail about it.
         gates={"total": sum(census.values()), "by_state": census,
                "awaiting_review": census.get(str(GateState.REVIEW), 0)},
+        # The deployment's own identity. `can_sign` is derived from whether a
+        # key is actually loadable rather than from whether the variable is
+        # set, because a malformed key would otherwise advertise a signing
+        # capability that fails at the moment someone relies on it.
+        issuer={"address": claim_mod.issuer_address(),
+                "can_sign": claim_mod.issuer_address() is not None,
+                "scheme": claim_mod.SCHEME,
+                "ledger": store.ledger_summary()},
     )
 
 
@@ -655,7 +664,7 @@ def _claim_facts(gate_id: str) -> dict | None:
         "nullifier": row["nullifier"], "decided_by": row["decided_by"],
         "verdict": row["verdict"],
         "issuer": claim_mod.issuer_address() if signed else None,
-        "scheme": "EIP-191 personal_sign" if signed else None,
+        "scheme": claim_mod.SCHEME if signed else None,
     }
 
 
