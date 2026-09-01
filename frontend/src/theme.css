@@ -96,7 +96,16 @@ body::before {
 }
 
 a { color: var(--indigo-bright); text-decoration: none; }
+
+/* Underline is for links inside prose, where a colour shift alone is easy to
+   miss. A card that is entirely a link is already obviously clickable, and
+   underlining its heading on hover reads as a text-selection artefact rather
+   than an affordance — so anything that is a surface rather than a word opts
+   out. :where() keeps the opt-out at zero specificity, so a component can
+   still override it locally. */
 a:hover { text-decoration: underline; }
+a:hover:where(.path-step, .unbuilt-item, .btn, .queue-item, .tile),
+a:hover:where(:has(.hover-lift)) { text-decoration: none; }
 
 h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
 
@@ -471,13 +480,44 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   z-index: 2;
 }
 
+/* Hover is drawn as a line sweeping left to right across the top of the panel,
+   because the row already reads in that direction: each step exists because
+   the one before it did not settle. A lift would be wrong here — the three
+   panels share edges, so raising one tears the row apart. */
+.path-step::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--indigo-bright), transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .path-step:hover {
   background: var(--surface-2);
   border-color: var(--border-indigo);
   z-index: 3;
 }
+.path-step:hover::after { transform: scaleX(1); }
 .path-step:hover .path-name { color: var(--indigo-bright); }
-.path-step:hover .path-n { color: var(--indigo-bright); border-color: var(--border-indigo); }
+.path-step:hover .path-n {
+  color: var(--bg);
+  background: var(--indigo-bright);
+  border-color: var(--indigo-bright);
+}
+.path-step .path-outcome { transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1); }
+.path-step:hover .path-outcome { transform: translateX(4px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .path-step::after,
+  .path-step .path-outcome,
+  .tile,
+  .unbuilt-item { transition: none; }
+}
 
 .path-n {
   display: inline-block;
@@ -501,6 +541,57 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   font-size: 12.5px;
   color: var(--indigo-bright);
 }
+
+/* ── selectable tiles ─────────────────────────────────────────────────────
+   Three states, all distinguishable at a glance: resting, hovered, chosen.
+   Hover moves the tile; choosing it lights the left edge. A hover that looked
+   like a selection would leave you unsure which one you had actually picked. */
+
+.tile {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.tile::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--indigo-bright);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tile:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.022);
+  transform: translateX(2px);
+}
+
+.tile[aria-pressed='true'] {
+  border-color: var(--border-indigo);
+  background: rgba(99, 102, 241, 0.08);
+}
+.tile[aria-pressed='true']::before { transform: scaleY(1); }
+.tile:disabled { cursor: default; opacity: 0.55; }
+
+.tile-name { font-size: 13px; font-weight: 600; }
+.tile-line { font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+.tile-want { font-size: 11.5px; color: var(--indigo-bright); }
 
 /* ── labelled facts ───────────────────────────────────────────────────────
    A two-column grid rather than a stacked list, because these are read by
@@ -618,8 +709,13 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   border: 1px dashed var(--border-strong);
   border-radius: var(--r-sm);
   padding: 7px 11px;
+  transition: border-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
-.unbuilt-item:hover { border-color: var(--border-indigo); color: var(--ink); }
+.unbuilt-item:hover {
+  border-color: var(--border-indigo);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
 
 /* ── reviewer console ─────────────────────────────────────────────────────
    Evidence scrolls, the decision does not. The rail is align-self: start

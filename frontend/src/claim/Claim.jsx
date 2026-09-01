@@ -34,19 +34,19 @@ const WHO = [
   {
     key: 'self',
     label: 'the same person, again',
-    line: 'A second wallet, a different angle. This is the attack the check exists for.',
+    line: 'A second wallet, a different angle. The attack this check exists for.',
     want: 'should be caught',
   },
   {
     key: 'sibling',
     label: 'a close relative',
-    line: 'Similar face, similar skin, different spot pattern. Turning them away costs an honest person their allocation.',
+    line: 'Similar face, different person. Turning them away costs an honest person their allocation.',
     want: 'must not be auto-refused',
   },
   {
     key: 'stranger',
     label: 'somebody new',
-    line: 'Nobody on the roster. The ordinary case, and the one a wrong threshold breaks quietly.',
+    line: 'Nobody on the roster. The ordinary case, broken quietly by a wrong threshold.',
     want: 'should be allowed',
   },
 ]
@@ -62,13 +62,6 @@ const S = {
   split: { display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0,1fr) 360px', alignItems: 'start' },
   rail: { position: 'sticky', top: 24, display: 'grid', gap: 14 },
   pick: { display: 'grid', gap: 8 },
-  opt: {
-    textAlign: 'left', padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
-    borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
-    background: 'transparent', color: 'inherit',
-    display: 'grid', gap: 3, width: '100%',
-  },
-  optOn: { borderColor: 'var(--indigo-bright)', background: 'rgba(99,102,241,.08)' },
   dist: { display: 'grid', gap: 6, marginTop: 14 },
   bar: { position: 'relative', height: 10, borderRadius: 5, background: 'var(--surface-2)' },
 }
@@ -277,16 +270,14 @@ export default function Claim() {
       </div>
 
       <h1 style={{ margin: '0 0 6px', fontSize: 30 }}>One human, one claim</h1>
-      <p className="muted" style={{ maxWidth: 720, marginTop: 0 }}>
-        An airdrop, a governance vote, a faucet — anything where one person is
-        meant to get one share. A wallet is free to create; a person is not. This
-        checks the person against everyone who has already claimed, and refuses
-        to guess when the answer is close.
+      <p className="muted" style={{ maxWidth: 640, marginTop: 0 }}>
+        A wallet is free to create; a person is not. Airdrops, votes, faucets —
+        one share each. This checks the claimant against everyone already on the
+        roster, and refuses to guess when the answer is close.
       </p>
-      <p className="small dim" style={{ maxWidth: 720 }}>
-        The faces are synthetic, and every distance on this page measures the
-        matcher rather than real skin. That limitation travels with the finding
-        onto the certificate, where whoever inherits the decision has to read it.
+      <p className="small dim" style={{ maxWidth: 640 }}>
+        Faces are synthetic: these distances measure the matcher, not real skin.
+        That caveat travels onto the certificate.
       </p>
 
       <div style={S.split} className="review-split">
@@ -294,10 +285,9 @@ export default function Claim() {
           <Card title="the campaign roster"
             right={<span className="dim small">{enrolled} enrolled</span>}>
             <p className="small muted" style={{ marginTop: 0 }}>
-              Enrolment is separate from claiming on purpose. A roster that grew
-              only as a side effect of claiming could never answer <em>was this
-              person already here?</em> for the first claimant — they would have
-              just added themselves.
+              Enrolment is separate from claiming: a roster that grew as a side
+              effect of claiming could never answer <em>was this person already
+              here?</em> — the claimant would have just added themselves.
             </p>
             <div className="wrap" style={{ gap: 8 }}>
               {COHORT.map((who) => (
@@ -310,11 +300,10 @@ export default function Claim() {
             </div>
             {enrolled > 0 && (
               <p className="small dim" style={{ marginBottom: 0, marginTop: 14 }}>
-                A full sweep of this roster carries a{' '}
+                A full sweep carries a{' '}
                 <strong>{pct(roster.false_match_across_a_full_sweep)}</strong>{' '}
-                chance that a match is coincidence rather than the same person.
-                That number grows with every enrolment, which is why it sits next
-                to the verdict instead of in a methodology note.
+                chance a match is coincidence. It grows with every enrolment,
+                so it sits beside the verdict, not in a footnote.
               </p>
             )}
           </Card>
@@ -352,10 +341,9 @@ export default function Claim() {
                   borderLeft: '2px solid var(--amber)', paddingLeft: 12,
                   marginBottom: 0,
                 }}>
-                  This is the case the system is built around. The machine has a
-                  real measurement and it is not good enough to act on, so it
-                  stops and says so rather than picking whichever answer looks
-                  decisive. A named person rules, and their name goes on it.
+                  The case the system is built around. The measurement is real
+                  and not good enough to act on, so it stops instead of picking
+                  the answer that looks decisive. A named person rules.
                 </p>
               )}
             </Card>
@@ -366,9 +354,8 @@ export default function Claim() {
               right={<Badge value={result.decision.verdict} />}>
               <p className="small muted" style={{ marginTop: 0 }}>
                 The sweep is one check of several. A clean sweep that never
-                established a live person was present is not a claim, so the gate
-                applies this mode's whole requirement rather than the part that
-                happened to be submitted.
+                established a live person is not a claim, so the gate applies
+                the whole requirement — not the part that was submitted.
               </p>
               <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
                 {result.decision.reasons.map((r, i) => <li key={i}>{r}</li>)}
@@ -385,14 +372,13 @@ export default function Claim() {
                 <>
                   <p className="small" style={{ marginTop: 0 }}>
                     {signed.settled === 'FAIL'
-                      ? <>This is a signed refusal. The verdict below reads{' '}
-                        <code className="mono">FAIL</code>, not{' '}
-                        <code className="mono">PASS</code> — a contract that
-                        received an approval here would be acting on a claim the
-                        machine had just rejected.</>
-                      : <>This is what a verifying contract receives. It runs{' '}
+                      ? <>A signed refusal. The verdict reads{' '}
+                        <code className="mono">FAIL</code> — a contract handed
+                        an approval here would be acting on a claim the machine
+                        had just rejected.</>
+                      : <>What a verifying contract receives. It runs{' '}
                         <code className="mono">ecrecover</code> over the message
-                        and compares the result against the issuer below.</>}
+                        and compares the result against the issuer.</>}
                   </p>
                   <dl className="kv small">
                     <dt>verdict</dt>
@@ -407,11 +393,10 @@ export default function Claim() {
                     <dd>{signed.body.scheme}</dd>
                   </dl>
                   <p className="small dim">
-                    The nullifier is what stops a second wallet. It is derived
-                    from the enrolment and this campaign together, so it differs
-                    across campaigns and cannot be used to follow anyone between
-                    them. It is not zero-knowledge: we hold the secret it came
-                    from and can link it back.
+                    The nullifier stops a second wallet. Derived from enrolment
+                    and campaign together, so it differs per campaign and cannot
+                    track anyone between them. Not zero-knowledge — we hold the
+                    secret and can link it back.
                   </p>
                   <p style={{ marginBottom: 0 }}>
                     <a className="btn btn-ghost"
@@ -424,9 +409,9 @@ export default function Claim() {
                 <>
                   <p style={{ marginTop: 0 }}>{signed.body.detail}</p>
                   <p className="small dim" style={{ marginBottom: 0 }}>
-                    Refused by a unique index on (campaign, nullifier), not by a
-                    lookup this page ran first. Under load a lookup is a
-                    suggestion; the index is the guarantee.
+                    Refused by a unique index on (campaign, nullifier), not a
+                    lookup. Under load a lookup is a suggestion; the index is
+                    the guarantee.
                   </p>
                 </>
               )}
@@ -443,8 +428,8 @@ export default function Claim() {
         <aside style={S.rail} className="review-rail">
           <Card title="who walks up">
             <p className="small muted" style={{ marginTop: 0 }}>
-              Enrol somebody, then choose who actually presents themselves. The
-              useful result is the one you did not expect.
+              Enrol somebody, then choose who presents themselves. The useful
+              result is the one you did not expect.
             </p>
             <div className="wrap" style={{ gap: 6, marginBottom: 14 }}>
               {COHORT.map((who) => (
@@ -455,13 +440,11 @@ export default function Claim() {
             </div>
             <div style={S.pick}>
               {WHO.map((w) => (
-                <button key={w.key} onClick={() => setVariant(w.key)} disabled={!!busy}
-                  style={{ ...S.opt, ...(variant === w.key ? S.optOn : null) }}>
-                  <strong style={{ fontSize: 13 }}>{w.label}</strong>
-                  <span className="small dim">{w.line}</span>
-                  <span className="small" style={{ color: 'var(--indigo-bright)' }}>
-                    {w.want}
-                  </span>
+                <button key={w.key} className="tile" onClick={() => setVariant(w.key)}
+                  disabled={!!busy} aria-pressed={variant === w.key}>
+                  <span className="tile-name">{w.label}</span>
+                  <span className="tile-line">{w.line}</span>
+                  <span className="tile-want">{w.want}</span>
                 </button>
               ))}
             </div>
@@ -471,7 +454,7 @@ export default function Claim() {
             </button>
             {enrolled === 0 && (
               <p className="small dim" style={{ marginBottom: 0, marginTop: 8 }}>
-                Enrol somebody first. A sweep against an empty roster finds
+                Enrol somebody first — a sweep of an empty roster finds
                 nothing, which is true and proves nothing.
               </p>
             )}
@@ -482,11 +465,9 @@ export default function Claim() {
               {u.verdict === 'REVIEW' ? (
                 <>
                   <p className="small muted" style={{ marginTop: 0 }}>
-                    There is nothing to sign here. The gate is in the review
-                    queue with its evidence attached, waiting for someone whose
-                    name will go on the outcome. This page has no name to give
-                    it, and settling it from here would be the machine deciding
-                    while claiming a person had.
+                    Nothing to sign. The gate is queued with its evidence,
+                    waiting for someone whose name goes on the outcome. This
+                    page has no name to give it.
                   </p>
                   <Link className="btn" to="/review" style={{ width: '100%' }}>
                     open the reviewer console →
@@ -496,8 +477,8 @@ export default function Claim() {
                 <>
                   <p className="small muted" style={{ marginTop: 0 }}>
                     {u.verdict === 'DUPLICATE'
-                      ? 'The gate is walked to FAIL, because that is what the sweep found. A refusal is still signed and still certified — a contract needs to know a claim was refused, and by what.'
-                      : 'The gate is walked to SIGNED one legal step at a time. The last step admits no agent — that refusal is the product, and shortcutting it here would demo a guarantee the server does not give.'}
+                      ? 'Walked to FAIL, because that is what the sweep found. A refusal is still signed and certified — a contract needs to know a claim was refused, and by what.'
+                      : 'Walked to SIGNED one legal step at a time. The last step admits no agent; that refusal is the product.'}
                   </p>
                   <button className="btn" onClick={sign} disabled={!!busy}
                     style={{ width: '100%' }}>

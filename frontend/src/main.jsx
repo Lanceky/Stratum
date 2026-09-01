@@ -29,21 +29,21 @@ const PATH = [
     to: '/agent',
     n: '01',
     name: 'An agent is refused',
-    line: 'Valid credentials, correct request, still refused — and the refusal is written to the chain as evidence.',
+    line: 'Valid credentials, correct request, still refused — and the refusal written to the chain as evidence.',
     outcome: 'A gate opens, and it needs a person.',
   },
   {
     to: '/gate/demo',
     n: '02',
     name: 'A person answers',
-    line: 'Three checks: someone is physically present, the capture is not generated, and it is the enrolled signer.',
+    line: 'Three checks: someone is present, the capture is not generated, and it is the enrolled signer.',
     outcome: 'Two checks settle. The third cannot.',
   },
   {
     to: '/review',
     n: '03',
     name: 'A reviewer settles it',
-    line: 'The measured overlap between a sibling and a bad photograph is real, so those gates reach a named human.',
+    line: 'A sibling and a bad photograph overlap measurably, so those gates reach a named human.',
     outcome: 'A ruling — and a sealed certificate.',
   },
 ]
@@ -136,7 +136,7 @@ function SystemPanel() {
       </div>
       <p className="dim small" style={{ margin: '12px 0 0' }}>
         The sensor grant is metered and cannot be topped up, so its calls run
-        from recordings unless asked otherwise. Everything else is live.
+        from recordings. Everything else is live.
       </p>
     </Card>
   )
@@ -163,9 +163,9 @@ function Home() {
               <span style={{ color: 'var(--indigo-bright)' }}>sign for it</span>.
             </h1>
             <p className="muted" style={{ maxWidth: 520, marginTop: 18, fontSize: 15 }}>
-              Every authorisation is written to a hash chain, one block per event.
-              An agent reaching for a signature is refused — and the refusal is
-              recorded, because that is exactly what an auditor wants to see.
+              Every authorisation is written to a hash chain, one block per
+              event. An agent reaching for a signature is refused — and the
+              refusal is recorded, because that is what an auditor came for.
             </p>
           </div>
           <SystemPanel />
@@ -196,30 +196,27 @@ function Home() {
               One human, one claim
             </h3>
             <p className="muted small" style={{ maxWidth: 560, marginTop: 0 }}>
-              An airdrop, a governance vote, a faucet. A wallet costs nothing to
-              create, so anything allocated per wallet is allocated per script.
-              The same three checks run — but the question changes from{' '}
-              <em>is this the enrolled signer?</em> to{' '}
-              <em>is this anyone we have already seen?</em>, and so does the
-              arithmetic: the error that matters is no longer letting a stranger
-              through, it is taking an allocation from someone entitled to it.
+              A wallet costs nothing to create, so anything allocated per wallet
+              is allocated per script. The same checks run, but the question
+              changes from <em>is this the enrolled signer?</em> to{' '}
+              <em>is this anyone we have already seen?</em> — and the error that
+              matters flips: not a stranger let through, but an allocation taken
+              from someone entitled to it.
             </p>
             <p className="muted small" style={{ maxWidth: 560 }}>
-              So a close relative is not refused. They are referred to a person,
-              with the odds of a coincidence printed next to the finding. What a
-              contract receives is signed, and says whether a machine or a named
-              human settled it.
+              So a close relative is referred to a person, not refused, with the
+              odds of coincidence printed beside the finding.
             </p>
             <Link to="/claim" className="btn">try to claim twice →</Link>
           </div>
           <ul className="second-points">
             <li><strong>No hardware.</strong> A phone, not a $50,000 orb.</li>
             <li><strong>Per-campaign nullifiers.</strong> Unlinkable between
-              campaigns, and honest that they are not zero-knowledge.</li>
-            <li><strong>EIP-191.</strong> Solidity <code className="mono">ecrecover</code>{' '}
-              verifies it on chain, unchanged.</li>
-            <li><strong>The odds travel with it.</strong> False-match probability
-              grows with the roster, so it is stated per sweep.</li>
+              campaigns; not zero-knowledge, and says so.</li>
+            <li><strong>EIP-191.</strong> Solidity{' '}
+              <code className="mono">ecrecover</code> verifies it unchanged.</li>
+            <li><strong>The odds travel with it.</strong> False-match risk grows
+              with the roster, so it is stated per sweep.</li>
           </ul>
         </section>
 
@@ -233,8 +230,7 @@ function Home() {
               The evidence, the measured limit of every check, and the chain head
               — rendered to PDF/A and signed. It states what was <em>not</em>{' '}
               established as plainly as what was, because whoever relies on it
-              inherits both. Downloadable from any settled gate in the reviewer
-              console.
+              inherits both.
             </p>
           </div>
           <div className="artefact-doc" aria-hidden="true">
