@@ -155,20 +155,27 @@ export function Pending({ title, step, line }) {
  * identity would be indistinguishable at a glance from one showing a real one.
  *
  * The sections are optional and stack in a fixed order: identity, then live
- * counts, then fixed facts, then a caveat, then the deployment stamp. Fixed,
- * because the order is the argument — who this is, what it has done, how to
- * check it, and what it does not cover.
+ * counts, then fixed facts, then caveats. Fixed, because the order is the
+ * argument — who this is, what it has done, how to check it, and what it does
+ * not cover.
+ *
+ * The caveats are chips rather than a paragraph. They were a paragraph first,
+ * and a four-line block of grey text is the part of a card nobody reads —
+ * which is the wrong place for the limits of the thing. As labels they are
+ * scanned in the same pass as the status.
  */
+const CARD_BADGE = { indigo: 'badge-signed', amber: 'badge-review', red: 'badge-fail' }
+
 export function IdentityCard({
   glyph, eyebrow, title, status, tone = 'indigo', stats = [], rows = [],
-  note, footer, children,
+  chips = [], children,
 }) {
   return (
     <article className={`idcard idcard-${tone}`}>
       <header className="idcard-head">
         <span className="idcard-glyph">{glyph ?? <ShieldGlyph />}</span>
         {status && (
-          <span className="idcard-status"><i className="idcard-dot" />{status}</span>
+          <span className={`badge ${CARD_BADGE[tone] ?? 'badge-idle'}`}>{status}</span>
         )}
       </header>
 
@@ -200,8 +207,14 @@ export function IdentityCard({
       )}
 
       {children}
-      {note && <p className="idcard-note">{note}</p>}
-      {footer && <p className="idcard-foot mono">{footer}</p>}
+
+      {chips.length > 0 && (
+        <div className="idcard-chips">
+          {chips.map((c) => (
+            <span key={c.k} className="badge badge-absent" title={c.title}>{c.k}</span>
+          ))}
+        </div>
+      )}
     </article>
   )
 }

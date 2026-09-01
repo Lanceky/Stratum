@@ -762,11 +762,11 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 .idcard {
   position: relative;
   width: 100%;
-  max-width: 420px;
+  max-width: 400px;
   margin-inline: auto;
   display: flex;
   flex-direction: column;
-  padding: 22px;
+  padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--r-lg);
   background:
@@ -781,14 +781,14 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .idcard-glyph {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--indigo-line);
   border-radius: var(--r);
   color: var(--indigo-bright);
@@ -796,33 +796,11 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 }
 
 .idcard-glyph svg {
-  width: 22px;
-  height: 22px;
+  width: 19px;
+  height: 19px;
   /* The glow sits on the strokes themselves, so it follows the shape instead
      of forming a rectangle behind the icon. */
   filter: drop-shadow(0 0 7px rgba(129, 140, 248, 0.55));
-}
-
-.idcard-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  padding: 4px 9px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-}
-
-.idcard-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 6px var(--green);
 }
 
 .idcard-eyebrow {
@@ -846,11 +824,11 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  margin-top: 22px;
+  margin-top: 16px;
 }
 
 .idcard-stat-n {
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -859,7 +837,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 }
 
 .idcard-stat-k {
-  margin-top: 6px;
+  margin-top: 5px;
   font-size: 11.5px;
   color: var(--ink-3);
 }
@@ -867,9 +845,9 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 .idcard-rows {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 9px 16px;
-  margin: 20px 0 0;
-  padding-top: 18px;
+  gap: 8px 16px;
+  margin: 16px 0 0;
+  padding-top: 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 12px;
 }
@@ -891,28 +869,12 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 
 .idcard-rows dd.mono { font-size: 11.5px; color: var(--ink); }
 
-.idcard-note {
-  margin: 18px 0 0;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--ink-3);
-}
-
-/* The deployment stamp. Held at low opacity because it is not for reading —
-   it is there so the card is traceable to one run of one server, which is the
-   difference between a credential and a picture of one. Pushed to the bottom
-   so two cards of different content still line up along their last rule. */
-.idcard-foot {
-  margin: 18px 0 0;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
-  color: var(--ink-3);
-  opacity: 0.72;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* What the card does not cover, as labels rather than as a paragraph. */
+.idcard-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
 }
 
 /* Tones. The accent carries meaning everywhere else in this console, so it
@@ -931,7 +893,6 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   background: var(--amber-dim);
 }
 .idcard-amber .idcard-glyph svg { filter: drop-shadow(0 0 7px rgba(227, 179, 65, 0.5)); }
-.idcard-amber .idcard-dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
 
 .idcard-red {
   background:
@@ -944,7 +905,6 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   background: var(--red-dim);
 }
 .idcard-red .idcard-glyph svg { filter: drop-shadow(0 0 7px rgba(248, 81, 73, 0.45)); }
-.idcard-red .idcard-dot { background: var(--red); box-shadow: 0 0 6px var(--red); }
 
 /* ── responsive ───────────────────────────────────────────────────────────
    Kept last on purpose: a media query adds no specificity, so any equally
