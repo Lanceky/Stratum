@@ -155,6 +155,62 @@ def demo_gate(ttl_s: int = 600, mode: str = str(GateMode.AUTHORISE_ACTION)) -> d
     return {k: gate[k] for k in ("id", "mode", "state", "expires_at", "created_at")}
 
 
+# Four people the demo can put in front of the camera. Named rather than
+# numbered because the interesting question is not "does capture 7 match
+# capture 3" — it is "can Dana claim twice", and a reviewer should be able to
+# hold that question in their head while they try it.
+DEMO_COHORT = {"ada": 9401, "brix": 9402, "cyrus": 9403, "dana": 9404}
+
+
+class ClaimantRequest(BaseModel):
+    person: str
+    variant: Literal["self", "sibling", "stranger"] = "self"
+    pose: int = 0
+
+
+@app.post("/demo/claimant")
+def demo_claimant(body: ClaimantRequest) -> dict:
+    """
+    A synthetic capture, so a browser with no camera can still walk the claim
+    flow — and, more usefully, can walk it as somebody else.
+
+    This exists to be attacked. The demo is worth nothing if the only face it
+    can show is one that passes; a reviewer needs to try the same person twice
+    and try their sibling, which a live camera cannot arrange on request.
+
+    Marked synthetic in the payload and never dressed up as a photograph. Every
+    figure it produces measures the matcher, not real skin, and a demo that
+    let that slip would be claiming an accuracy nobody has measured.
+
+    `pose` is varied per request so a second capture of the same person is
+    genuinely a second capture — camera angle, scale and offset all differ.
+    Reusing one frame would make the duplicate finding trivial and prove
+    nothing about the matcher.
+    """
+    from synth_cohort import POSES, Identity, capture, sibling
+
+    seed = DEMO_COHORT.get(body.person)
+    if seed is None:
+        raise HTTPException(
+            422, f"{body.person!r} is not in the demo cohort: "
+                 f"{', '.join(sorted(DEMO_COHORT))}")
+
+    pose = POSES[body.pose % len(POSES)]
+    person = Identity(seed=seed)
+    if body.variant == "sibling":
+        cap = sibling(person, seed + body.pose, **pose)
+        note = f"a close relative of {body.person} — not the same person"
+    elif body.variant == "stranger":
+        cap = capture(Identity(seed=seed + 777_000), body.pose, **pose)
+        note = "somebody nobody has seen before"
+    else:
+        cap = capture(person, seed + body.pose * 31, **pose)
+        note = f"{body.person}, captured again at a different angle"
+
+    return {"capture": cap, "who": body.person, "variant": body.variant,
+            "note": note, "synthetic": True}
+
+
 class TamperRequest(BaseModel):
     index: int = 0
     payload: dict | None = None

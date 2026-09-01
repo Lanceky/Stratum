@@ -408,3 +408,57 @@ def test_enrolling_does_not_open_a_phantom_gate(client, people):
     """
     enrol(client, people[0], "p0")
     assert client.get("/health").json()["gates"]["total"] == 0
+
+
+# ── the demo cohort ───────────────────────────────────────────────────────
+def face(client, person, variant="self", pose=0):
+    r = client.post("/demo/claimant", json={"person": person,
+                                            "variant": variant, "pose": pose})
+    assert r.status_code == 200, r.text
+    return r.json()["capture"]
+
+
+def test_a_demo_capture_is_marked_synthetic(client):
+    """
+    Every figure it produces measures the matcher, not real skin. A demo that
+    let that slip would claim an accuracy nobody has measured.
+    """
+    assert client.post("/demo/claimant",
+                       json={"person": "ada"}).json()["synthetic"] is True
+
+
+def test_an_unknown_person_is_refused_with_the_roster(client):
+    r = client.post("/demo/claimant", json={"person": "nobody"})
+    assert r.status_code == 422 and "ada" in r.text
+
+
+def test_the_same_person_at_a_new_angle_is_still_caught(client):
+    """
+    The demo varies pose per request, so a second capture is genuinely a
+    second capture. If it reused one frame the duplicate finding would be
+    trivial and would prove nothing about the matcher.
+    """
+    client.post("/claims/enrol", json={"context": CONTEXT, "subject_ref": "ada",
+                                       "capture": face(client, "ada", pose=0)})
+    r = client.post("/claims/verify", json={
+        "context": CONTEXT, "address": WALLET,
+        "capture": face(client, "ada", pose=1)}).json()["uniqueness"]
+    assert r["verdict"] in ("DUPLICATE", "REVIEW")
+
+
+def test_a_demo_stranger_may_claim(client):
+    client.post("/claims/enrol", json={"context": CONTEXT, "subject_ref": "ada",
+                                       "capture": face(client, "ada")})
+    r = client.post("/claims/verify", json={
+        "context": CONTEXT, "address": WALLET,
+        "capture": face(client, "ada", "stranger")}).json()["uniqueness"]
+    assert r["verdict"] == "UNIQUE"
+
+
+def test_a_demo_sibling_is_not_auto_refused(client):
+    client.post("/claims/enrol", json={"context": CONTEXT, "subject_ref": "ada",
+                                       "capture": face(client, "ada")})
+    r = client.post("/claims/verify", json={
+        "context": CONTEXT, "address": WALLET,
+        "capture": face(client, "ada", "sibling", pose=1)}).json()["uniqueness"]
+    assert r["verdict"] != "DUPLICATE"

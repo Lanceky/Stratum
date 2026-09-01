@@ -9,6 +9,7 @@ import Agent from './agent/Agent.jsx'
 import Review from './review/Review.jsx'
 import Verify from './verify/Verify.jsx'
 import Dashboard from './dashboard/Dashboard.jsx'
+import Claim from './claim/Claim.jsx'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
@@ -188,6 +189,40 @@ function Home() {
           </div>
         </section>
 
+        <section className="second">
+          <div>
+            <p className="eyebrow" style={{ marginTop: 0 }}>the same layer, a different problem</p>
+            <h3 style={{ fontSize: 18, margin: '0 0 10px' }}>
+              One human, one claim
+            </h3>
+            <p className="muted small" style={{ maxWidth: 560, marginTop: 0 }}>
+              An airdrop, a governance vote, a faucet. A wallet costs nothing to
+              create, so anything allocated per wallet is allocated per script.
+              The same three checks run — but the question changes from{' '}
+              <em>is this the enrolled signer?</em> to{' '}
+              <em>is this anyone we have already seen?</em>, and so does the
+              arithmetic: the error that matters is no longer letting a stranger
+              through, it is taking an allocation from someone entitled to it.
+            </p>
+            <p className="muted small" style={{ maxWidth: 560 }}>
+              So a close relative is not refused. They are referred to a person,
+              with the odds of a coincidence printed next to the finding. What a
+              contract receives is signed, and says whether a machine or a named
+              human settled it.
+            </p>
+            <Link to="/claim" className="btn">try to claim twice →</Link>
+          </div>
+          <ul className="second-points">
+            <li><strong>No hardware.</strong> A phone, not a $50,000 orb.</li>
+            <li><strong>Per-campaign nullifiers.</strong> Unlinkable between
+              campaigns, and honest that they are not zero-knowledge.</li>
+            <li><strong>EIP-191.</strong> Solidity <code className="mono">ecrecover</code>{' '}
+              verifies it on chain, unchanged.</li>
+            <li><strong>The odds travel with it.</strong> False-match probability
+              grows with the roster, so it is stated per sweep.</li>
+          </ul>
+        </section>
+
         <section className="artefact">
           <div>
             <p className="eyebrow" style={{ marginTop: 0 }}>what comes out</p>
@@ -241,6 +276,7 @@ createRoot(document.getElementById('root')).render(
       <Route path="/gate/:gateId" element={<Gate />} />
       <Route path="/review" element={<Review />} />
       <Route path="/verify" element={<Verify />} />
+      <Route path="/claim" element={<Claim />} />
       <Route path="/dashboard" element={<Dashboard />} />
     </Routes>
   </BrowserRouter>
