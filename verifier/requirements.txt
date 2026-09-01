@@ -13,6 +13,8 @@ pydantic==2.10.5
 # Frames reach /gates/{id}/capture as multipart. Base64 in JSON would inflate
 # every HD frame by a third and make a phone do the encoding.
 python-multipart==0.0.20
+# EIP-191 personal_sign, so a contract can ecrecover a claim without an oracle.
+eth-account==0.13.4
 pytest==8.3.4
 matplotlib==3.10.0
 scikit-learn==1.6.1
