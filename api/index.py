@@ -52,6 +52,8 @@ os.environ.setdefault("STRATUM_UNIT_LOG", "/tmp/fixtures/units.log")
 
 from starlette.types import Receive, Scope, Send  # noqa: E402
 
+import anyio.to_thread  # noqa: E402
+
 # Deferred so that an import failure becomes a readable HTTP response instead
 # of FUNCTION_INVOCATION_FAILED. A missing wheel or a mis-set path is the most
 # likely way this deployment breaks, and it is the failure mode that tells you
@@ -105,11 +107,20 @@ def _seed_review_queue() -> None:
 
 
 def _warm() -> None:
-    """Best-effort. A cold start that cannot seed should still serve.
+    """Best-effort seeding, run on first request rather than at import.
 
-    A demo with an empty review queue is a weaker demo; a demo that 500s on the
-    first request is no demo at all. So failures here are swallowed rather than
-    raised, and the console simply shows an empty queue.
+    Deliberately *not* called at module scope. Seeding drives a gate through
+    /decide, which imports opencv, scipy and scikit-learn and then does real
+    image work — several hundred megabytes of shared objects and the most
+    expensive thing this deployment can do. Serverless init is the worst place
+    for it: the init phase has a tighter budget than a request, and a process
+    killed there produces FUNCTION_INVOCATION_FAILED with no traceback, because
+    nothing Python-level survives to report it.
+
+    Moving it behind the first request buys the full maxDuration, keeps cold
+    start to the fastapi and eth-account imports alone, and — because failures
+    here are swallowed — means a deployment that cannot seed still serves every
+    route instead of none of them.
     """
     for step in (_seed_fixtures, _seed_review_queue):
         try:
@@ -142,6 +153,7 @@ class StripPrefix:
 
     def __init__(self, app) -> None:
         self.inner = app
+        self.warmed = False
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] in ("http", "websocket"):
@@ -152,6 +164,15 @@ class StripPrefix:
                 scope["root_path"] = self.PREFIX
                 if scope.get("raw_path"):
                     scope["raw_path"] = scope["path"].encode()
+        if not self.warmed:
+            # Set before the attempt, not after: seeding that fails halfway
+            # would otherwise retry on every subsequent request, turning one
+            # slow response into permanently slow ones.
+            self.warmed = True
+            # In a worker thread because _seed_review_queue drives a
+            # TestClient, which starts its own event loop and cannot do that
+            # from inside the one already running this request.
+            await anyio.to_thread.run_sync(_warm)
         await self.inner(scope, receive, send)
 
 
@@ -191,7 +212,5 @@ else:
     # application has started. Harmless to the seeder either way — it calls
     # bare paths like /gates, and this only strips a prefix that is present.
     appmod.app.add_middleware(StripPrefix)
-
-    _warm()
 
     app = appmod.app
