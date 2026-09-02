@@ -43,10 +43,25 @@ dependencies = [
   "eth-account==0.13.4",
 
   # --- verification --------------------------------------------------------
-  # Imported lazily, only once a check actually runs. numpy and pillow are also
-  # what the fixture seeder needs to rebuild its synthetic tree at cold start.
+  # Imported lazily, only once a check actually runs — but "lazily" means on
+  # the first claim or capture, not never. Trimming these to shrink the bundle
+  # leaves /claims/enrol and /claims/verify raising ImportError behind a bare
+  # 500, because normalise.py imports scipy at module scope.
+  #
+  #   numpy    41 MB  everywhere, and the fixture seeder
+  #   pillow    6 MB  image decode, and the fixture seeder
+  #   scipy   125 MB  cKDTree in normalise.py — the constellation match
+  #   cv2      77 MB  findHomography in checks/presence.py — geometry residual
+  #   sklearn  55 MB  DBSCAN in masks.py — spot clustering
+  #
+  # ~390 MB installed against a 500 MB limit. matplotlib stays out: it is
+  # report-only and would spend 30 MB of the remaining margin on code no
+  # request can reach.
   "numpy==2.2.1",
   "pillow==11.1.0",
+  "scipy==1.15.0",
+  "opencv-python-headless==4.11.0.86",
+  "scikit-learn==1.6.1",
 ]
 
 [tool.vercel]
