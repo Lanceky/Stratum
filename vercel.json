@@ -1,21 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
 
-  "framework": null,
   "buildCommand": "cd frontend && npm ci && npm run build",
-  "outputDirectory": "frontend/dist",
 
   "functions": {
     "api/index.py": {
       "maxDuration": 60,
-      "excludeFiles": "{verifier/tests/**,verifier/.venv/**,frontend/**,benchmark/**,docs/**,reports/**,scripts/**,xano/**,agent/**,**/__pycache__/**,**/*.pyc}"
+      "excludeFiles": "{verifier/tests/**,verifier/.venv/**,frontend/node_modules/**,frontend/src/**,frontend/public/**,benchmark/**,docs/**,reports/**,scripts/**,xano/**,agent/**,**/__pycache__/**}"
     }
   },
-
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
 
   "headers": [
     {

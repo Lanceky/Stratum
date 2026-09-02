@@ -1,0 +1,53 @@
+# Deployment manifest for the Vercel Python runtime.
+#
+# Not a packaging file — the project is not installed as a package, and nothing
+# imports it by name. It exists because Vercel reads two things from here that
+# cannot be expressed anywhere else.
+#
+# 1. The entrypoint.
+#
+#    Vercel detects a FastAPI project from the dependencies below and then goes
+#    looking for a `FastAPI` instance called `app`. It only looks in a fixed set
+#    of places: app.py, index.py, server.py, main.py, wsgi.py or asgi.py, at the
+#    repo root or inside src/ or app/. This project keeps its application in
+#    verifier/app.py behind a wrapper in api/index.py, which is none of those,
+#    so detection finds a FastAPI project with no application in it and the
+#    function fails to start — with no Python traceback, because nothing
+#    Python-level ever ran. `tool.vercel.entrypoint` is the documented way to
+#    say where the app actually is.
+#
+# 2. The runtime dependency set.
+#
+#    Deliberately narrower than verifier/requirements.txt, which is the
+#    development set and carries pytest and matplotlib. Both exist to produce
+#    measurements offline and neither is reachable from a request.
+#
+# If both this file and requirements.txt are present Vercel prefers this one,
+# so the dependency list lives here alone to keep a single source of truth.
+
+[project]
+name = "stratum"
+version = "0.1.0"
+description = "Human-authorisation gates for agentic workflows"
+requires-python = ">=3.13,<3.14"
+
+dependencies = [
+  # --- serving -------------------------------------------------------------
+  "fastapi==0.115.6",
+  "pydantic==2.10.5",
+  "python-multipart==0.0.20",
+  "httpx==0.28.1",
+  # Perfect Corp auth is an RSA token exchange, not a plain key header.
+  "cryptography==50.0.1",
+  # EIP-191 personal_sign, so a contract can ecrecover a claim without oracle.
+  "eth-account==0.13.4",
+
+  # --- verification --------------------------------------------------------
+  # Imported lazily, only once a check actually runs. numpy and pillow are also
+  # what the fixture seeder needs to rebuild its synthetic tree at cold start.
+  "numpy==2.2.1",
+  "pillow==11.1.0",
+]
+
+[tool.vercel]
+entrypoint = "api.index:app"

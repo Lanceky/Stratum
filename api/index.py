@@ -63,6 +63,9 @@ import anyio.to_thread  # noqa: E402
 _BOOT_ERROR: str | None = None
 appmod = None
 try:
+    from fastapi import Request  # noqa: E402
+    from fastapi.responses import JSONResponse  # noqa: E402
+
     import app as appmod  # noqa: E402
 except Exception:  # noqa: BLE001 — re-raised to the client, see _Broken
     import traceback
@@ -184,6 +187,11 @@ class _Broken:
     plain text costs nothing here — replay mode holds no credentials and the
     store is an empty /tmp file — and it converts an opaque platform error into
     the actual missing module.
+
+    Not a FastAPI instance, so the platform's own app detection will not accept
+    it. That is unavoidable: if FastAPI could not be imported there is nothing
+    to build one from. It still helps under `vercel dev` and any host that
+    accepts a bare ASGI callable.
     """
 
     def __init__(self, detail: str) -> None:
@@ -197,20 +205,60 @@ class _Broken:
         await send({"type": "http.response.body", "body": self.body})
 
 
+def _serve_frontend(fastapi_app) -> None:
+    """Serve the built single-page app from the same application as the API.
+
+    Vercel routes *every* request to the detected app, so anything not claimed
+    here — `/review`, `/agent`, a hard refresh on any deep link — reaches Python
+    rather than the CDN's static handler. Without a catch-all those all 404,
+    which looks exactly like a broken deployment.
+
+    Registered after the verifier's own routes, so it can only ever match what
+    they did not. `/assets` is a real mount rather than part of the catch-all
+    because the platform promotes mounted static directories to the CDN at build
+    time, which keeps the hashed bundles off the function entirely.
+    """
+    dist = ROOT / "frontend" / "dist"
+    index = dist / "index.html"
+    if not index.is_file():
+        return
+
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    if (dist / "assets").is_dir():
+        fastapi_app.mount("/assets", StaticFiles(directory=dist / "assets"),
+                          name="assets")
+
+    @fastapi_app.get("/{path:path}", include_in_schema=False)
+    async def _spa(path: str, request: Request):
+        # An unmatched path that still carries the API prefix is a missing
+        # endpoint, not a page. Returning the SPA there would answer a bad API
+        # call with 200 and a pile of HTML, which is far harder to debug than a
+        # plain 404.
+        if request.scope.get("root_path") == StripPrefix.PREFIX:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        candidate = (dist / path) if path else index
+        if path and candidate.is_file() and dist in candidate.resolve().parents:
+            return FileResponse(candidate)
+        return FileResponse(index)
+
+
 if _BOOT_ERROR is not None:
     app = _Broken(_BOOT_ERROR)
 else:
     # Registered as middleware rather than by wrapping the app in a plain
     # callable, so that `app` stays a genuine FastAPI instance. The platform
-    # inspects this object to decide whether it is ASGI or WSGI, and a bare
-    # callable is exactly the shape that guess gets wrong. Starlette applies
-    # user middleware outside the router, so rewriting the path here still
-    # happens before any route is matched.
+    # looks for a FastAPI instance named `app` and will not accept a wrapper,
+    # which is the whole reason this is middleware and not composition.
+    # Starlette applies user middleware outside the router, so rewriting the
+    # path here still happens before any route is matched.
     #
     # Must precede _warm(): seeding drives a TestClient, which builds the
     # middleware stack, and Starlette refuses to add middleware once an
     # application has started. Harmless to the seeder either way — it calls
     # bare paths like /gates, and this only strips a prefix that is present.
     appmod.app.add_middleware(StripPrefix)
+    _serve_frontend(appmod.app)
 
     app = appmod.app
