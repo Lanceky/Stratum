@@ -30,7 +30,7 @@ import claim as claim_mod
 import foxit
 import nutrient
 from dimensions import STABLE, VOLATILE
-from fixtures import FixtureMissing, budget_status
+from fixtures import FixtureMissing, budget_status, env
 from gate import Actor, GateMode, GateState, IllegalTransition
 from store import Store
 
@@ -63,7 +63,7 @@ def health() -> HealthResponse:
     census = store.census()
     return HealthResponse(
         status="ok",
-        api_mode=os.getenv("STRATUM_API_MODE", "replay"),
+        api_mode=env("STRATUM_API_MODE", "replay"),
         units=budget_status(),
         # Counted by state rather than totalled, so a caller can see the shape
         # of the queue and not just its size. `total` is derived here so the
