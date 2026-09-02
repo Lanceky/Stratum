@@ -61,10 +61,10 @@ import httpx
 
 import fixtures
 
-BASE_URL = os.getenv("DOCTAVIAN_BASE_URL", "https://demo.api.doctavian.com")
+BASE_URL = fixtures.env("DOCTAVIAN_BASE_URL", "https://demo.api.doctavian.com")
 API_KEY = os.getenv("DOCTAVIAN_API_KEY", "")
 SERVICE_TOKEN = os.getenv("DOCTAVIAN_SERVICE_TOKEN", "")
-TEAM = os.getenv("DOCTAVIAN_TEAM", "Team Stratum")
+TEAM = fixtures.env("DOCTAVIAN_TEAM", "Team Stratum")
 EMAIL = os.getenv("DOCTAVIAN_EMAIL", "")
 
 GENERATE_PATH = "/v1/documents/document/generate"

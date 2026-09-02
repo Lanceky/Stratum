@@ -50,7 +50,7 @@ import httpx
 
 import fixtures
 
-BASE_URL = os.getenv("NUTRIENT_BASE_URL", "https://api.nutrient.io")
+BASE_URL = fixtures.env("NUTRIENT_BASE_URL", "https://api.nutrient.io")
 
 # One key per product. `NUTRIENT_API_KEY` is honoured as a fallback so a
 # single-key account still works, but the grant issues them separately.

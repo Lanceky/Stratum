@@ -114,7 +114,7 @@ POLL_CEILING_S = 120
 # are therefore logged at zero cost against the shared ledger — so they still
 # show up in `units.log` as evidence of a real call — and counted separately
 # here by op name.
-CREDIT_CEILING = int(os.getenv("FOXIT_CREDIT_CEILING", "400"))
+CREDIT_CEILING = int(fixtures.env("FOXIT_CREDIT_CEILING", "400"))
 OP_PREFIX = "foxit-"
 
 

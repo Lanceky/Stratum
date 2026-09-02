@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import masks as masklib
 import perfectcorp as pc
 from dimensions import is_stable, is_volatile
-from fixtures import budget_status
+from fixtures import budget_status, env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MASK_CACHE = REPO_ROOT / "fixtures" / "masks"
@@ -37,7 +37,7 @@ OUT_DIR = REPO_ROOT / "fixtures" / "derived"
 
 
 def run(image_path: Path, hd: bool = True, plot: bool = False) -> dict:
-    mode = os.getenv("STRATUM_API_MODE", "replay")
+    mode = env("STRATUM_API_MODE", "replay")
     data = image_path.read_bytes()
     print(f"[pipeline] {image_path.name}  ({len(data):,} bytes)  mode={mode}")
 

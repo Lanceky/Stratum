@@ -255,7 +255,7 @@ def secret() -> str:
     make every restart invalidate gates that were already in flight. Production
     sets the variable; `app.py` reports whether it did.
     """
-    return os.getenv(SECRET_ENV, "stratum-dev-challenge-secret")
+    return os.environ.get(SECRET_ENV, "").strip() or "stratum-dev-challenge-secret"
 
 
 def _predict(frames: tuple[Frame, ...]) -> tuple[Prediction, ...]:

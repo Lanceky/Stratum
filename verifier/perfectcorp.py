@@ -44,9 +44,9 @@ from typing import Any, Literal
 
 import httpx
 
-from fixtures import call
+from fixtures import call, env
 
-BASE_URL = os.getenv("PERFECTCORP_BASE_URL", "https://yce-api-01.makeupar.com")
+BASE_URL = env("PERFECTCORP_BASE_URL", "https://yce-api-01.makeupar.com")
 API_KEY = os.getenv("PERFECTCORP_API_KEY", "")
 SECRET_KEY = os.getenv("PERFECTCORP_SECRET_KEY", "")
 API_PREFIX = "/s2s/v2.0"
@@ -257,7 +257,7 @@ def upload_bytes(upload_info: dict, data: bytes) -> str:
 
     # In replay the pre-signed URL is long expired and the task response is
     # already recorded, so uploading is a no-op.
-    if os.getenv("STRATUM_API_MODE", "replay") == "replay":
+    if env("STRATUM_API_MODE", "replay") == "replay":
         return file_id
 
     slot = entry["requests"][0]
@@ -350,7 +350,7 @@ def download_masks(result: SkinAnalysisResult, dest: Path) -> dict[str, Path]:
     """
     dest.mkdir(parents=True, exist_ok=True)
     paths: dict[str, Path] = {}
-    replay = os.getenv("STRATUM_API_MODE", "replay") == "replay"
+    replay = env("STRATUM_API_MODE", "replay") == "replay"
 
     for name, url in result.mask_urls.items():
         safe = name.replace(":", "_").replace("#", "_")

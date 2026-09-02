@@ -90,7 +90,8 @@ def _secret() -> bytes:
     prevent. Loud in the payload (`dev_secret`) so a demo is never mistaken for
     a deployment.
     """
-    return os.getenv(SECRET_ENV, "stratum-development-nullifier-secret").encode()
+    return (os.environ.get(SECRET_ENV, "").strip()
+            or "stratum-development-nullifier-secret").encode()
 
 
 def using_dev_secret() -> bool:

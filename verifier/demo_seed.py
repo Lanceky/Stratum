@@ -22,7 +22,7 @@ import httpx
 from gate import GateState
 from store import Store
 
-BASE = os.getenv("STRATUM_VERIFIER", "http://127.0.0.1:8000")
+BASE = os.environ.get("STRATUM_VERIFIER", "").strip() or "http://127.0.0.1:8000"
 DB = os.getenv("STRATUM_DB", "")
 
 TTL_S = 3600  # long enough to demonstrate; a real gate lives for five minutes

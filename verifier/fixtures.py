@@ -19,7 +19,28 @@ from pathlib import Path
 from typing import Any, Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FIXTURE_DIR = Path(os.getenv("STRATUM_FIXTURE_DIR", REPO_ROOT / "fixtures"))
+
+
+def env(name: str, default: str | Path) -> str:
+    """Read an environment variable, treating blank as absent.
+
+    `os.getenv(name, default)` only falls back when the variable is *missing*,
+    but the common way to configure a deployment is a template with every key
+    present and the unused ones left empty. That yields "" rather than the
+    default, which is how `int(os.getenv("UNIT_BUDGET_CEILING", "200"))` came to
+    raise `invalid literal for int() with base 10: ''` on a host where the key
+    was declared but not filled in — a crash at import, before any route
+    exists to report it.
+
+    Blank is therefore read as "not configured", which is what whoever left it
+    blank meant. The `or` idiom this generalises is already used in foxit.py and
+    nutrient.py; this puts it in one place so the next variable added does not
+    have to remember.
+    """
+    return os.environ.get(name, "").strip() or str(default)
+
+
+FIXTURE_DIR = Path(env("STRATUM_FIXTURE_DIR", REPO_ROOT / "fixtures"))
 
 # Synthetic fixtures live apart from recorded ones and are only consulted as a
 # fallback. A real recording therefore always wins over a placeholder, and the
@@ -29,12 +50,12 @@ FIXTURE_DIR = Path(os.getenv("STRATUM_FIXTURE_DIR", REPO_ROOT / "fixtures"))
 # where the repo says fixtures live. On Vercel the recorded tree ships with the
 # function and stays read-only, while the synthetic tree is regenerated into
 # /tmp at cold start; splitting the two env vars is what lets those differ.
-SYNTHETIC_DIR = Path(os.getenv("STRATUM_SYNTHETIC_DIR", FIXTURE_DIR / "synthetic"))
+SYNTHETIC_DIR = Path(env("STRATUM_SYNTHETIC_DIR", FIXTURE_DIR / "synthetic"))
 
-UNIT_LOG = Path(os.getenv("STRATUM_UNIT_LOG", FIXTURE_DIR / "units.log"))
+UNIT_LOG = Path(env("STRATUM_UNIT_LOG", FIXTURE_DIR / "units.log"))
 
-MODE = os.getenv("STRATUM_API_MODE", "replay")
-CEILING = int(os.getenv("UNIT_BUDGET_CEILING", "200"))
+MODE = env("STRATUM_API_MODE", "replay")
+CEILING = int(env("UNIT_BUDGET_CEILING", "200"))
 
 # Published Perfect Corp unit costs. HD is the expensive one — see context.md §11.1.
 UNIT_COST = {

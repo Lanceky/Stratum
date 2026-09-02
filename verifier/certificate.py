@@ -55,7 +55,7 @@ SEALABLE = frozenset(att_mod.VERDICT_STATES) | {"SIGNED", "SEALED"}
 # stamped as an evaluation copy — which is worse than a plain PDF, since a
 # compliance record whose face says it must not be relied upon is not a record.
 # Set STRATUM_PDFA=0 to render a plain signed PDF instead.
-PDFA = os.getenv("STRATUM_PDFA", "1") not in ("0", "false", "no")
+PDFA = (os.environ.get("STRATUM_PDFA", "").strip() or "1") not in ("0", "false", "no")
 
 
 class NotSealable(Exception):
