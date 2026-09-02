@@ -50,9 +50,22 @@ os.environ.setdefault("STRATUM_API_MODE", "replay")
 os.environ.setdefault("STRATUM_SYNTHETIC_DIR", "/tmp/fixtures/synthetic")
 os.environ.setdefault("STRATUM_UNIT_LOG", "/tmp/fixtures/units.log")
 
-from starlette.types import ASGIApp, Receive, Scope, Send  # noqa: E402
+from starlette.types import Receive, Scope, Send  # noqa: E402
 
-import app as appmod  # noqa: E402
+# Deferred so that an import failure becomes a readable HTTP response instead
+# of FUNCTION_INVOCATION_FAILED. A missing wheel or a mis-set path is the most
+# likely way this deployment breaks, and it is the failure mode that tells you
+# least from the outside — the platform reports only that the function did not
+# start. Capturing the traceback and serving it is worth more than letting the
+# module raise, because the URL then diagnoses itself.
+_BOOT_ERROR: str | None = None
+appmod = None
+try:
+    import app as appmod  # noqa: E402
+except Exception:  # noqa: BLE001 — re-raised to the client, see _Broken
+    import traceback
+
+    _BOOT_ERROR = traceback.format_exc()
 
 
 def _seed_fixtures() -> None:
@@ -127,8 +140,8 @@ class StripPrefix:
 
     PREFIX = "/api"
 
-    def __init__(self, inner: ASGIApp) -> None:
-        self.inner = inner
+    def __init__(self, app) -> None:
+        self.inner = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] in ("http", "websocket"):
@@ -142,6 +155,43 @@ class StripPrefix:
         await self.inner(scope, receive, send)
 
 
-_warm()
+class _Broken:
+    """Serve the boot traceback rather than nothing at all.
 
-app = StripPrefix(appmod.app)
+    Only reachable when the import above failed, which means there is no app to
+    delegate to and every route is equally dead. Returning the traceback as
+    plain text costs nothing here — replay mode holds no credentials and the
+    store is an empty /tmp file — and it converts an opaque platform error into
+    the actual missing module.
+    """
+
+    def __init__(self, detail: str) -> None:
+        self.body = f"stratum: verifier failed to start\n\n{detail}".encode()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            return
+        await send({"type": "http.response.start", "status": 500,
+                    "headers": [(b"content-type", b"text/plain; charset=utf-8")]})
+        await send({"type": "http.response.body", "body": self.body})
+
+
+if _BOOT_ERROR is not None:
+    app = _Broken(_BOOT_ERROR)
+else:
+    # Registered as middleware rather than by wrapping the app in a plain
+    # callable, so that `app` stays a genuine FastAPI instance. The platform
+    # inspects this object to decide whether it is ASGI or WSGI, and a bare
+    # callable is exactly the shape that guess gets wrong. Starlette applies
+    # user middleware outside the router, so rewriting the path here still
+    # happens before any route is matched.
+    #
+    # Must precede _warm(): seeding drives a TestClient, which builds the
+    # middleware stack, and Starlette refuses to add middleware once an
+    # application has started. Harmless to the seeder either way — it calls
+    # bare paths like /gates, and this only strips a prefix that is present.
+    appmod.app.add_middleware(StripPrefix)
+
+    _warm()
+
+    app = appmod.app

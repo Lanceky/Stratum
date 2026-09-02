@@ -4,7 +4,6 @@
   "framework": null,
   "buildCommand": "cd frontend && npm ci && npm run build",
   "outputDirectory": "frontend/dist",
-  "installCommand": "true",
 
   "functions": {
     "api/index.py": {
