@@ -169,6 +169,116 @@ def _face_attr_response() -> dict:
     }
 
 
+def _minimal_pdf(title: str, body: str) -> bytes:
+    """
+    A valid one-page PDF, written by hand.
+
+    Small enough to read in a hex dump and real enough that a viewer opens it,
+    which is what a stand-in for a document operation needs to be. Pulling in a
+    PDF library to emit two lines of text would add a dependency to the seeder
+    that the running service does not have.
+    """
+    text = (f"BT /F1 16 Tf 62 742 Td ({title}) Tj ET\n"
+            f"BT /F1 10 Tf 62 716 Td ({body}) Tj ET")
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        f"<< /Length {len(text)} >>\nstream\n{text}\nendstream",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+
+    out = bytearray(b"%PDF-1.7\n")
+    offsets = []
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n{obj}\nendobj\n".encode("latin-1")
+
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode()
+    out += (f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref}\n%%EOF\n").encode()
+    return bytes(out)
+
+
+# Ids a reader can recognise as stand-ins at a glance. A synthetic fixture that
+# hands back a plausible-looking random id invites someone to paste it into a
+# real console and wonder why Foxit has never heard of it.
+FOXIT_DOC = "synthetic-foxit-document"
+FOXIT_STAMPED = "synthetic-foxit-document-stamped"
+
+
+def _seed_foxit() -> int:
+    """
+    Stand-ins for the agent's toolset, so the boundary demo runs before any
+    Foxit credential exists.
+
+    This is the one part of the seed that is about an argument rather than a
+    pipeline. The agent console's claim is that the agent has *real reach* and
+    is refused at exactly one step — and a console where every tool call
+    returned a 503 would demonstrate the opposite, an agent that cannot do
+    anything, which proves nothing about where the boundary sits.
+
+    Written under generic keys because every id in a Foxit chain is a
+    server-generated random; see `fixtures.CONTENT_INDEPENDENT` for why a
+    payload-keyed fixture here could never be hit.
+    """
+    import foxit  # noqa: PLC0415 — imported here so seeding stays optional
+
+    def generic(op: str, body: dict) -> None:
+        (SYNTHETIC_DIR / f"{generic_key(op)}.json").write_text(
+            json.dumps({"_synthetic": True, **body}, indent=2))
+
+    draft = _minimal_pdf(
+        "Payment run 2026-09-02",
+        "Prepared by an autonomous agent. Not valid until a human authorises it.")
+    (SYNTHETIC_DIR / "foxit_draft.pdf").write_bytes(draft)
+
+    generic("foxit-upload", {"documentId": FOXIT_DOC})
+
+    generic("foxit-properties", {"taskId": "synthetic-task-properties"})
+    generic("foxit-properties-task", {
+        "taskId": "synthetic-task-properties", "status": "COMPLETED",
+        "progress": 100,
+        "resultData": {"pageCount": 1, "encrypted": False, "signed": False,
+                       "title": "Payment run 2026-09-02",
+                       "producer": "Stratum (synthetic fixture)"},
+    })
+
+    generic("foxit-watermark", {"taskId": "synthetic-task-watermark"})
+    generic("foxit-watermark-task", {
+        "taskId": "synthetic-task-watermark", "status": "COMPLETED",
+        "progress": 100, "resultDocumentId": FOXIT_STAMPED,
+    })
+
+    generic("foxit-compare", {"taskId": "synthetic-task-compare"})
+    generic("foxit-compare-task", {
+        "taskId": "synthetic-task-compare", "status": "COMPLETED",
+        "progress": 100,
+        # No differences, because the interesting demo is the one where the
+        # document the human saw is the document being signed. A stand-in that
+        # invented a diff would put a tamper warning on screen with nothing
+        # behind it.
+        "resultData": {"differencesFound": 0, "pagesCompared": 1},
+    })
+
+    # The download stand-in is the stamped document, so what comes back from
+    # the chain is a PDF that actually says UNSIGNED on it rather than the
+    # draft that went in.
+    stamped = _minimal_pdf(
+        "Payment run 2026-09-02",
+        "UNSIGNED - AWAITING HUMAN AUTHORISATION")
+    (SYNTHETIC_DIR / f"{generic_key('foxit-download')}.pdf").write_bytes(stamped)
+
+    print(f"[seed] foxit toolset stand-ins → {foxit.OP_PREFIX}* "
+          f"({len(draft):,}-byte draft, {len(stamped):,}-byte stamped)")
+    return 9
+
+
 def main() -> None:
     # Wipe first. A stale fixture from an earlier seed is worse than none:
     # it is keyed on an input that no longer exists, so it never replays but
@@ -228,6 +338,8 @@ def main() -> None:
         {"src_file_id": FILE_ID, "dst_actions": ["face_attribute", "face_ratio"],
          "format": "json"},
         _face_attr_response())
+
+    written += _seed_foxit()
 
     print(f"[seed] {written} fixtures → {SYNTHETIC_DIR.relative_to(REPO_ROOT)}")
     print('[seed] all carry "_synthetic": true — delete once real ones are recorded')

@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 import attestation
 import certificate
 import claim as claim_mod
+import foxit
 import nutrient
 from dimensions import STABLE, VOLATILE
 from fixtures import FixtureMissing, budget_status
@@ -1462,3 +1463,158 @@ def claim_signature(gate_id: str, body: SignatureRequest) -> dict:
                  "human, one claim, is the whole point") from exc
 
     return signed
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The agent's toolset.
+#
+# Foxit's challenge asks whether signing belongs in an agent's toolset. This is
+# where we answer it in code rather than in prose: a real, credentialled
+# toolset over Foxit's PDF Services API, from which exactly one capability is
+# withheld.
+#
+# The manifest is a route rather than a constant in the frontend because the
+# claim is about the *server*. A boundary a client draws is a suggestion — the
+# next client draws it differently. Publishing it here means an agent can ask
+# what it may do and get the same answer the enforcement uses.
+# ─────────────────────────────────────────────────────────────────────────────
+
+REVERSIBLE_TOOLS = {
+    "inspect_document": {
+        "summary": "Read a document's properties. Writes nothing.",
+        "undo": "Nothing to undo — this call does not modify the document.",
+    },
+    "mark_unsigned": {
+        "summary": "Stamp the document as awaiting human authorisation.",
+        "undo": "The watermark can be removed; page content is untouched.",
+    },
+    "compare_revisions": {
+        "summary": "Diff two revisions, to catch a substitution between "
+                   "what a human was shown and what is being signed.",
+        "undo": "Nothing to undo — this call reads two documents and writes neither.",
+    },
+}
+
+WITHHELD_TOOLS = {
+    "sign_document": {
+        "summary": "Apply a signature. Not available to any agent.",
+        "why": "Irreversible. A signature creates an obligation that cannot be "
+               "withdrawn by the party that applied it, which is the one "
+               "property no autonomous caller should hold.",
+    },
+}
+
+
+@app.get("/agent/tools")
+def agent_tools() -> dict:
+    """
+    What the agent may do, and the one thing it may not.
+
+    `sign_document` is listed rather than hidden. Omitting it would leave the
+    agent to discover the boundary by hitting an error, and an undocumented
+    failure is the thing that produces retries and workarounds — precisely the
+    behaviour the boundary exists to prevent. Declared and refused is a
+    different message from absent: it says the capability was considered and
+    withheld, not overlooked.
+    """
+    return {
+        "allowed": [
+            {"name": n, "reversible": True, **spec}
+            for n, spec in REVERSIBLE_TOOLS.items()
+        ] + [{
+            "name": "request_human_signature",
+            "reversible": True,
+            "summary": "Ask for a human to authorise. Always returns "
+                       f"{foxit.BLOCKED}.",
+            "undo": "Nothing to undo — this records a request, it does not act.",
+        }],
+        "withheld": [
+            {"name": n, "reversible": False, **spec}
+            for n, spec in WITHHELD_TOOLS.items()
+        ],
+        "principle": (
+            "Every tool an agent holds can be undone or changes nothing. The "
+            "irreversible act is not in the toolset — it is behind a gate that "
+            "only a verified human can pass."
+        ),
+        "provider": "Foxit PDF Services",
+        "configured": foxit.configured(),
+        "mode": foxit.mode(),
+    }
+
+
+class ToolRequest(BaseModel):
+    gate_id: str | None = None
+    document_id: str | None = None
+    compare_to: str | None = None
+    actor: str = "agent"
+
+
+@app.post("/agent/tools/{name}")
+def agent_tool_call(name: str, body: ToolRequest) -> dict:
+    """
+    Run one tool as the agent.
+
+    The refusal is a 403 and not a 404, which is a deliberate distinction. A
+    404 says "no such capability", inviting the caller to look for the right
+    spelling. A 403 says the capability is real, was understood, and is denied
+    — the only answer that ends the search rather than redirecting it.
+
+    Every call against a gate is audited, refusals included. A refusal that
+    leaves no trace is indistinguishable from an agent that never tried, and
+    the attempt is the part a reviewer most needs to see.
+    """
+    if body.gate_id:
+        store.audit(body.gate_id, "agent.tool_call",
+                    {"tool": name, "actor": body.actor})
+
+    if name in WITHHELD_TOOLS:
+        if body.gate_id:
+            store.audit(body.gate_id, "agent.refused",
+                        {"tool": name, "actor": body.actor})
+        raise HTTPException(403, {
+            "error": "AGENT_FORBIDDEN",
+            "tool": name,
+            "message": WITHHELD_TOOLS[name]["why"],
+            "instead": "request_human_signature",
+        })
+
+    if name == "request_human_signature":
+        if not body.gate_id:
+            raise HTTPException(422, "request_human_signature needs a gate_id — "
+                                     "the request is recorded against a gate")
+        out = foxit.request_human_signature(body.gate_id)
+        store.audit(body.gate_id, "agent.human_requested", out)
+        return out
+
+    if name not in REVERSIBLE_TOOLS:
+        raise HTTPException(404, f"no tool named {name!r}. See GET /agent/tools")
+
+    if not body.document_id:
+        raise HTTPException(422, f"{name} needs a document_id")
+
+    try:
+        if name == "inspect_document":
+            return {"tool": name, "result": foxit.properties(body.document_id)}
+        if name == "mark_unsigned":
+            if not body.gate_id:
+                raise HTTPException(422, "mark_unsigned needs a gate_id — the "
+                                         "stamp names the gate to answer")
+            return {"tool": name,
+                    "document_id": foxit.mark_unsigned(body.document_id, body.gate_id)}
+        if name == "compare_revisions":
+            if not body.compare_to:
+                raise HTTPException(422, "compare_revisions needs compare_to")
+            return {"tool": name,
+                    "result": foxit.compare(body.document_id, body.compare_to)}
+    except foxit.NotAuthorised as exc:
+        # 501 rather than 502: the request was well formed and the server has
+        # no credentials. A 502 would send a caller looking at Foxit's status
+        # page for an outage that is ours.
+        raise HTTPException(501, str(exc)) from exc
+    except FixtureMissing as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except foxit.FoxitError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    raise HTTPException(404, f"no tool named {name!r}")

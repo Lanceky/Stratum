@@ -84,7 +84,27 @@ def fixture_key(op: str, payload: Any) -> str:
 # Analysis is emphatically not in this set. Its response *is* a function of the
 # image, and serving a generic stand-in for it would be handing back a reading
 # of a face nobody looked at.
-CONTENT_INDEPENDENT = frozenset({"file-upload"})
+CONTENT_INDEPENDENT = frozenset({
+    "file-upload",
+    # Foxit's document operations, for a related but not identical reason.
+    # Their answers are not generic — a real watermark is a function of the
+    # document it stamps — but every id in the chain is a server-generated
+    # random. An upload returns a fresh `documentId`, an operation a fresh
+    # `taskId`, and the watermark's own text names the gate, which is itself
+    # random. Keyed on payload, not one of these could ever be hit twice: the
+    # next run draws different ids and misses every step.
+    #
+    # So a stand-in here stands in for the *call*, not the document. That is
+    # honest about what it proves — that the toolset is wired and reachable,
+    # which is the claim the agent console makes — and no further. `auto` mode
+    # still ignores synthetic fixtures, so a real credential records real
+    # responses and those win from then on.
+    "foxit-upload",
+    "foxit-properties", "foxit-properties-task",
+    "foxit-watermark", "foxit-watermark-task",
+    "foxit-compare", "foxit-compare-task",
+    "foxit-download",
+})
 
 GENERIC_KEY = "any"
 

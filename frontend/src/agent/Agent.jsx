@@ -42,9 +42,30 @@ const SCRIPT = [
     method: 'POST', path: () => '/demo/gate', body: null, expect: 201,
   },
   {
+    key: 'tools',
+    title: 'It asks what it is allowed to do',
+    line: 'The toolset is published by the server, not assembled by the client. A boundary the caller draws is a suggestion.',
+    method: 'GET', path: () => '/agent/tools', body: null, expect: 200,
+  },
+  {
+    key: 'work',
+    title: 'It does real work on the document',
+    line: 'A Foxit PDF Services call. The agent stamps the document UNSIGNED — the one thing it can honestly say about a document it is not allowed to finish.',
+    method: 'POST', path: () => '/agent/tools/mark_unsigned',
+    body: (id) => ({ gate_id: id, document_id: 'synthetic-foxit-document' }),
+    expect: 200,
+  },
+  {
+    key: 'sign_tool',
+    title: 'Then it reaches for the signature',
+    line: 'Same credentials, same session, one tool along. This is where an agent with a signing tool in its belt would simply finish the job.',
+    method: 'POST', path: () => '/agent/tools/sign_document',
+    body: (id) => ({ gate_id: id }), expect: 403,
+  },
+  {
     key: 'sign',
-    title: 'The agent tries to sign it itself',
-    line: 'Same credentials, same session, one field different. In an ordinary audit log this is indistinguishable from the human, because the log records the principal and the agent is holding it.',
+    title: 'So it goes around the toolset',
+    line: 'Refused a tool, it addresses the state machine directly. In an ordinary audit log this is indistinguishable from the human, because the log records the principal and the agent is holding it.',
     method: 'POST', path: (id) => `/gates/${id}/transition`,
     body: { to: 'SIGNED', actor: 'agent' }, expect: 409,
   },
@@ -65,31 +86,39 @@ const SCRIPT = [
   {
     key: 'audit',
     title: 'What is left behind',
-    line: 'Both attempts are in the append-only chain, each naming the actor and the move it reached for.',
+    line: 'Every attempt is in the append-only chain, each naming the actor and the move it reached for.',
     method: 'GET', path: (id) => `/gates/${id}/audit`, body: null, expect: 200,
   },
 ]
 
+/** `body` may depend on the gate, which does not exist until step one returns. */
+const bodyFor = (step, id) =>
+  typeof step.body === 'function' ? step.body(id) : step.body
+
 function Call({ step, result, pending }) {
   const unexpected = result && result.status !== step.expect
+  const refused = result && (result.status === 409 || result.status === 403)
   const style = {
     ...S.call,
-    ...(result ? (result.status === 409 ? S.refused : S.allowed) : {}),
+    ...(result ? (refused ? S.refused : S.allowed) : {}),
   }
+  // Once the call has run, show what was actually sent rather than re-deriving
+  // it — the gate id is not known until step one returns.
+  const body = result ? result.sent : bodyFor(step, '…')
 
   return (
     <div style={style}>
       <p className="mono small" style={{ margin: 0 }}>
         <span className="muted">{step.method}</span> {result?.path ?? step.path('…')}
-        {step.body && <span className="muted"> {JSON.stringify(step.body)}</span>}
+        {body && <span className="muted"> {JSON.stringify(body)}</span>}
       </p>
       {result ? (
         <p className="mono small" style={{ margin: '4px 0 0' }}>
-          <strong style={{ color: result.status === 409 ? 'var(--red)' : 'var(--ink)' }}>
+          <strong style={{ color: refused ? 'var(--red)' : 'var(--ink)' }}>
             {result.status}
           </strong>{' '}
           <span className="muted">
-            {result.status === 409 ? 'refused' : 'ok'} · {result.ms}ms
+            {refused ? 'refused' : 'ok'} · {result.ms}ms
           </span>
           {unexpected && (
             <span style={{ color: 'var(--amber)' }}> · expected {step.expect}</span>
@@ -128,10 +157,67 @@ function Verdict({ step, result }) {
     )
   }
 
+  if (result.status === 403) {
+    const detail = d.detail ?? {}
+    return (
+      <div style={S.body}>
+        <p style={{ margin: 0, color: 'var(--red)' }}><strong>{detail.message}</strong></p>
+        <p style={{ margin: '6px 0 0' }}>
+          Refused as <span className="mono">{detail.error}</span> — a 403, not a 404. A 404
+          would say “no such capability” and send the agent looking for the right spelling.
+          A 403 says the capability is real, understood, and denied. It is offered
+          <span className="mono"> {detail.instead}</span> instead.
+        </p>
+      </div>
+    )
+  }
+
   if (step.key === 'open') {
     return (
       <p style={S.body}>
         Gate <Hash value={d.id} chars={8} /> created, state <strong>{d.state}</strong>.
+      </p>
+    )
+  }
+
+  if (step.key === 'tools') {
+    return (
+      <div style={S.body}>
+        <p style={{ margin: '0 0 8px' }}>
+          {d.allowed?.length} tools allowed, {d.withheld?.length} withheld, over{' '}
+          <strong>{d.provider}</strong>.
+        </p>
+        <p className="mono small" style={{ margin: '0 0 4px' }}>
+          {(d.allowed ?? []).map((t) => t.name).join('  ')}
+        </p>
+        <p className="mono small" style={{ margin: '0 0 8px', color: 'var(--red)' }}>
+          {(d.withheld ?? []).map((t) => t.name).join('  ')}
+        </p>
+        <p style={{ margin: '0 0 8px' }}>{d.principle}</p>
+        {/*
+          Said plainly rather than left for someone to discover. Without
+          credentials the document calls answer from a seeded stand-in, and a
+          console that let a stand-in read as a live integration would be
+          making exactly the claim this project spends its time refusing to
+          make about anything else.
+        */}
+        <p className="small" style={{ margin: 0, color: 'var(--amber)' }}>
+          {d.configured
+            ? 'Credentials present — document calls go to Foxit.'
+            : `No Foxit credentials set, so document calls below answer from a
+               seeded stand-in. The refusal is not a stand-in: it is the
+               server's, and it does not depend on Foxit being reachable.`}
+        </p>
+      </div>
+    )
+  }
+
+  if (step.key === 'work') {
+    return (
+      <p style={S.body}>
+        Watermarked. The document is now <Hash value={d.document_id} chars={12} />, stamped
+        UNSIGNED on every page. A watermark is the right instrument precisely because it comes
+        off — the agent has stated the document’s status without altering a word of it.
       </p>
     )
   }
@@ -146,7 +232,11 @@ function Verdict({ step, result }) {
   }
 
   if (step.key === 'audit') {
-    const refused = (d.events ?? []).filter((e) => e.type === 'transition.refused')
+    // Two kinds of refusal now reach the chain: a tool the agent was denied,
+    // and a state transition it was denied. Counting only one would understate
+    // what the run actually recorded.
+    const refused = (d.events ?? []).filter(
+      (e) => e.type === 'transition.refused' || e.type === 'agent.refused')
     return (
       <div style={S.body}>
         <p style={{ margin: '0 0 8px' }}>
@@ -158,7 +248,7 @@ function Verdict({ step, result }) {
           return (
             <p key={e.hash} className="mono small" style={{ margin: '0 0 4px' }}>
               <span style={{ color: 'var(--red)' }}>{p.actor}</span>
-              {' reached for '}<strong>{p.to}</strong>{'  '}
+              {' reached for '}<strong>{p.to ?? p.tool}</strong>{'  '}
               <Hash value={e.hash} chars={10} />
             </p>
           )
@@ -188,11 +278,12 @@ export default function Agent() {
       for (const [i, s] of SCRIPT.entries()) {
         setStep(i)
         const path = s.path(idRef.current)
+        const sent = bodyFor(s, idRef.current)
         const started = performance.now()
         const res = await fetch(`${API}${path}`, {
           method: s.method,
-          headers: s.body ? { 'Content-Type': 'application/json' } : undefined,
-          body: s.body ? JSON.stringify(s.body) : undefined,
+          headers: sent ? { 'Content-Type': 'application/json' } : undefined,
+          body: sent ? JSON.stringify(sent) : undefined,
         })
         const json = await res.json().catch(() => null)
         const ms = Math.round(performance.now() - started)
@@ -203,7 +294,9 @@ export default function Agent() {
           setGateId(json.id)
         }
 
-        setResults((prev) => ({ ...prev, [s.key]: { status: res.status, json, ms, path } }))
+        setResults((prev) => ({
+          ...prev, [s.key]: { status: res.status, json, ms, path, sent },
+        }))
         await new Promise((r) => setTimeout(r, 600))
       }
 
