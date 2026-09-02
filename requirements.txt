@@ -1,36 +1,29 @@
 # Runtime dependencies for the Vercel function.
 #
-# Deliberately not `verifier/requirements.txt`. That file is the development
-# set and carries matplotlib, pytest and the plotting stack, which exist to
-# produce the measurement reports offline and are never imported by a request.
-# Shipping them costs about 30 MB of bundle for code that cannot run here.
-#
-# Everything below is reachable from an HTTP request. The heavy three are not
-# optional, however much they weigh:
-#
-#   scipy   — cKDTree, in normalise.py; the constellation match is a
-#             nearest-neighbour query and this is what answers it
-#   cv2     — findHomography / estimateAffine2D, in checks/presence.py; the
-#             geometry signal is a homography residual
-#   sklearn — DBSCAN, in masks.py; spot clustering turns a mask into a
-#             constellation
-#
-# Measured bundle: ~338 MB installed, against Vercel's 500 MB Python limit.
-# Adding matplotlib back would still fit, but the margin is worth keeping for
-# the wheels that grow between now and the next deploy.
+# Split into two tiers because the deployment has a hard 500 MB unzipped bundle
+# limit and the scientific stack alone is ~300 MB of that.
 
+# --- Serving tier -----------------------------------------------------------
+# Everything needed to import the app and answer a request. ~90 MB.
 fastapi==0.115.6
 pydantic==2.10.5
 python-multipart==0.0.20
-
-numpy==2.2.1
-scipy==1.15.0
-opencv-python-headless==4.11.0.86
-scikit-learn==1.6.1
-pillow==11.1.0
-
 httpx==0.28.1
 # Perfect Corp auth is an RSA token exchange, not a plain key header.
 cryptography==50.0.1
 # EIP-191 personal_sign, so a contract can ecrecover a claim without an oracle.
 eth-account==0.13.4
+
+# --- Verification tier ------------------------------------------------------
+# Imported lazily, only when a check actually runs:
+#   numpy   41 MB   everywhere
+#   pillow   6 MB   image decode, and the fixture seeder
+#   scipy  125 MB   cKDTree in normalise.py — the constellation match
+#   cv2     77 MB   findHomography in checks/presence.py — geometry residual
+#   sklearn 55 MB   DBSCAN in masks.py — spot clustering
+#
+# Held back while the bundle limit is being diagnosed. The routes that make the
+# argument — the agent boundary, the audit chain, the reviewer console — do not
+# touch any of them.
+numpy==2.2.1
+pillow==11.1.0
