@@ -32,6 +32,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MASK_DIR = SYNTHETIC_DIR / "masks" / "synthetic_face"
 FACE_JPEG = SYNTHETIC_DIR / "synthetic_face.jpg"
 
+def _show(path: Path) -> str:
+    """Repo-relative when inside the repo, absolute otherwise.
+
+    A read-only deployment seeds into /tmp, which has no relative path to the
+    repo root; relative_to would raise and take the seeder down over a log
+    line.
+    """
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+
 IMG_W, IMG_H = 1080, 1440
 FILE_ID = "synthetic-file-0001"
 
@@ -290,11 +304,11 @@ def main() -> None:
     # Written before the upload fixture, because that fixture is keyed on the
     # image's real byte count.
     FACE_JPEG.write_bytes(_face_jpeg())
-    print(f"[seed] face → {FACE_JPEG.relative_to(REPO_ROOT)} "
+    print(f"[seed] face → {_show(FACE_JPEG)} "
           f"({FACE_JPEG.stat().st_size:,} bytes)")
 
     mask_urls = _write_masks()
-    print(f"[seed] {len(mask_urls)} masks → {MASK_DIR.relative_to(REPO_ROOT)}")
+    print(f"[seed] {len(mask_urls)} masks → {_show(MASK_DIR)}")
 
     written = 0
 
@@ -341,7 +355,7 @@ def main() -> None:
 
     written += _seed_foxit()
 
-    print(f"[seed] {written} fixtures → {SYNTHETIC_DIR.relative_to(REPO_ROOT)}")
+    print(f"[seed] {written} fixtures → {_show(SYNTHETIC_DIR)}")
     print('[seed] all carry "_synthetic": true — delete once real ones are recorded')
 
 

@@ -19,14 +19,19 @@ from pathlib import Path
 from typing import Any, Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FIXTURE_DIR = REPO_ROOT / "fixtures"
+FIXTURE_DIR = Path(os.getenv("STRATUM_FIXTURE_DIR", REPO_ROOT / "fixtures"))
 
 # Synthetic fixtures live apart from recorded ones and are only consulted as a
 # fallback. A real recording therefore always wins over a placeholder, and the
 # synthetic tree can be gitignored and regenerated with `make seed`.
-SYNTHETIC_DIR = FIXTURE_DIR / "synthetic"
+#
+# Both directories are overridable because a read-only deployment cannot write
+# where the repo says fixtures live. On Vercel the recorded tree ships with the
+# function and stays read-only, while the synthetic tree is regenerated into
+# /tmp at cold start; splitting the two env vars is what lets those differ.
+SYNTHETIC_DIR = Path(os.getenv("STRATUM_SYNTHETIC_DIR", FIXTURE_DIR / "synthetic"))
 
-UNIT_LOG = FIXTURE_DIR / "units.log"
+UNIT_LOG = Path(os.getenv("STRATUM_UNIT_LOG", FIXTURE_DIR / "units.log"))
 
 MODE = os.getenv("STRATUM_API_MODE", "replay")
 CEILING = int(os.getenv("UNIT_BUDGET_CEILING", "200"))

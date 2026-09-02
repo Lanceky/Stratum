@@ -1,0 +1,23 @@
+# The 600 MB virtualenv. Vercel installs from requirements.txt, so uploading a
+# local one is pure transfer cost — and it is built for this machine's Python.
+verifier/.venv/
+.venv/
+
+# Tests and their inputs never run in the deployment, and pytest is not in the
+# runtime requirements, so shipping them would only bloat the bundle.
+verifier/tests/
+.pytest_cache/
+**/__pycache__/
+*.pyc
+
+# Recorded evidence and reports are development artefacts. The function
+# regenerates the synthetic tree into /tmp at cold start.
+fixtures/synthetic/
+fixtures/units.log
+reports/
+docs/outbox/
+
+# Local state.
+*.db
+.env
+frontend/node_modules/
