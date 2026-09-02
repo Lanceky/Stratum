@@ -159,11 +159,14 @@ class PresenceResult:
 
     @property
     def reason(self) -> str:
-        """Fusion quotes this verbatim to a reviewer, so it says what is missing."""
+        """
+        Fusion quotes this verbatim, after its own "could not run — " prefix,
+        so it is written to complete that sentence rather than restate it.
+        """
         if self.passed and self.undecided_signals:
-            return (f"{', '.join(self.undecided_signals)} did not run, so this "
-                    "capture carries less evidence than a full one. Every "
-                    "signal that did run was satisfied.")
+            return ("the light-response test was not part of this capture. The "
+                    "person chose the no-flash path, which cannot provoke one. "
+                    "Every other signal ran and was satisfied.")
         return ""
 
     def as_dict(self) -> dict:

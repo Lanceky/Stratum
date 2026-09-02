@@ -368,4 +368,10 @@ def test_a_steady_capture_reaches_review_and_not_pass():
 
     assert decision.verdict == fusion.REVIEW
     assert decision.requires_human
-    assert any("illumination" in r for r in decision.reasons)
+    # Asserted on the structure, not on the wording — the prose is written for
+    # a reviewer and will be reworded; what must not change is which check went
+    # unsettled and that its own words reach the queue.
+    presence_out = next(o for o in decision.outcomes if o.name == "presence")
+    assert not presence_out.ran
+    assert any(r.startswith("presence: could not run") and "no-flash" in r
+               for r in decision.reasons)
