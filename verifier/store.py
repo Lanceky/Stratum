@@ -265,6 +265,50 @@ class Store:
     def is_expired(self, gate: dict, at: datetime | None = None) -> bool:
         return (at or datetime.now(UTC)) > datetime.fromisoformat(gate["expires_at"])
 
+    def challenge_options(self, gate: dict) -> dict:
+        """
+        The challenge variant this gate was issued under.
+
+        Three routes re-derive the challenge from the nonce — issue, capture
+        and score — and they have to agree. If the browser captured a steady
+        sequence while the verifier re-derived a flashing one, every frame
+        would be judged against a colour that was never on screen, and the
+        person who took the accessible path would be refused for taking it.
+        """
+        raw = gate.get("challenge_spec")
+        spec = json.loads(raw) if isinstance(raw, str) and raw else (raw or {})
+        return {"flashing": bool(spec.get("flashing", True))}
+
+    @_locked
+    def set_challenge_options(self, gate_id: str, *, flashing: bool) -> dict:
+        """
+        Pin the challenge variant, once, before the capture happens.
+
+        Writable only up to CHALLENGED. After that the frames exist and were
+        taken under one variant; letting a later call rewrite which one would
+        let a client re-score its own capture against a weaker test.
+        """
+        gate = self.get("gates", gate_id)
+        if gate is None:
+            raise KeyError(gate_id)
+        if gate["state"] not in (str(GateState.REQUESTED),
+                                 str(GateState.CHALLENGED)):
+            raise IllegalTransition(
+                GateState(gate["state"]), GateState(gate["state"]), Actor.SYSTEM,
+                "the challenge variant cannot change once frames are captured")
+
+        raw = gate.get("challenge_spec")
+        spec = json.loads(raw) if isinstance(raw, str) and raw else (raw or {})
+        spec["flashing"] = bool(flashing)
+        self.db.execute("UPDATE gates SET challenge_spec = ? WHERE id = ?",
+                        (ledger.canonical_json(spec), gate_id))
+        self.db.commit()
+        # Audited because it is a claim about how the person was tested, and a
+        # reviewer looking at a REVIEW verdict needs to see that the reduced
+        # challenge was chosen before capture rather than after a failure.
+        self.audit(gate_id, "gate.challenge_options", {"flashing": bool(flashing)})
+        return self.get("gates", gate_id)
+
     @_locked
     def gate_transition(self, gate_id: str, to: GateState | str, actor: Actor | str,
                         detail: dict | None = None,

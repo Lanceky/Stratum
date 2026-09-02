@@ -352,7 +352,8 @@ async def capture(gate_id: str,
         raise HTTPException(409, f"gate is {gate['state']} and cannot be captured")
 
     try:
-        spec = ch.derive(gate["nonce"])
+        spec = ch.derive(gate["nonce"],
+                         flashing=store.challenge_options(gate)["flashing"])
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -893,6 +894,7 @@ class ChallengeRequest(BaseModel):
     nonce: str | None = Field(None, min_length=8)
     gate_id: str | None = None
     n_frames: int | None = None
+    flashing: bool = True
 
 
 class AuthenticityRequest(BaseModel):
@@ -910,6 +912,11 @@ class PresenceRequest(BaseModel):
     frames: list[dict]
     gate_id: str | None = None
     n_frames: int | None = None
+    # Honoured only on the nonce-only path; a gate's variant is read from the
+    # gate. Trusting it there would let a client re-score a flashing capture as
+    # though the light response had never been asked for — and the variant that
+    # skips a check is exactly the one a client must not get to choose.
+    flashing: bool = True
 
 
 @app.post("/challenge")
@@ -948,9 +955,24 @@ def issue_challenge(body: ChallengeRequest) -> dict:
     if gate is not None and body.n_frames:
         raise HTTPException(422, "n_frames cannot be set for a gate's challenge")
 
+    # Pinned before the spec is built, so capture and scoring re-derive the same
+    # sequence. Idempotent for the page-refresh case: asking twice for the same
+    # variant is not an error, asking for a different one after capture is.
+    if gate is not None:
+        try:
+            gate = store.set_challenge_options(body.gate_id,
+                                               flashing=body.flashing)
+        except IllegalTransition as exc:
+            raise HTTPException(409, {
+                "error": "illegal_transition", "from": str(exc.frm),
+                "to": str(exc.to), "reason": exc.reason,
+            }) from None
+    flashing = (store.challenge_options(gate)["flashing"] if gate is not None
+                else body.flashing)
+
     kw = {"n_frames": body.n_frames} if body.n_frames else {}
     try:
-        spec = ch.derive(nonce, **kw).client_view()
+        spec = ch.derive(nonce, flashing=flashing, **kw).client_view()
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -996,8 +1018,16 @@ def check_presence(body: PresenceRequest) -> dict:
     from checks.presence import evaluate
 
     kw = {"n_frames": body.n_frames} if body.n_frames else {}
+    flashing = body.flashing
+    if body.gate_id:
+        gate = store.get("gates", body.gate_id)
+        if gate is None:
+            raise HTTPException(404, "no such gate")
+        # The gate's own record of how it was tested, not the client's claim
+        # about it.
+        flashing = store.challenge_options(gate)["flashing"]
     try:
-        spec = ch.derive(body.nonce, **kw)
+        spec = ch.derive(body.nonce, flashing=flashing, **kw)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -1009,14 +1039,16 @@ def check_presence(body: PresenceRequest) -> dict:
     result = evaluate(body.frames, spec, issued_at=body.issued_at).as_dict()
 
     if body.gate_id:
-        if store.get("gates", body.gate_id) is None:
-            raise HTTPException(404, "no such gate")
         store.add_evidence(body.gate_id, 1, result["score"], {
             "passed": result["passed"],
+            "ran": result["ran"],
             "failed": result["failed"],
+            "undecided": result["undecided"],
+            "reason": result["reason"],
             "triggering_signal": result["failed"][0] if result["failed"] else None,
             "limitations": result["limitations"],
-            "signals": {s["name"]: {"passed": s["passed"], "score": s["score"]}
+            "signals": {s["name"]: {"passed": s["passed"], "ran": s["ran"],
+                                    "score": s["score"]}
                         for s in result["signals"]},
         })
         result["gate_id"] = body.gate_id

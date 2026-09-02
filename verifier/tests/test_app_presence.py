@@ -52,7 +52,8 @@ def gate(client):
 def test_challenge_tells_the_client_what_to_do(client):
     r = client.post("/challenge", json={"nonce": NONCE})
     assert r.status_code == 200
-    assert set(r.json()) == {"frames", "pose_prompt", "hold_ms", "window_ms"}
+    assert set(r.json()) == {"frames", "pose_prompt", "hold_ms", "window_ms",
+                             "flashing"}
 
 
 def test_challenge_never_ships_the_predictions(client):

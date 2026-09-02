@@ -6,6 +6,15 @@
  * biometric verification carries transparency duties, so we say what we do
  * in plain language before the camera opens (context.md §11.8).
  *
+ * Two disclosures, not one, and deliberately not merged. The biometric notice
+ * is about what happens to the data; the photosensitivity warning is about what
+ * happens to the person. Flashing content can trigger a seizure, and a single
+ * "I agree" covering both would bury a physical-safety warning inside a privacy
+ * notice — where nobody reads it, and where agreeing to it is not really a
+ * choice because there is no alternative on offer. So the warning carries its
+ * own way out: a capture that never flashes, which costs the light-response
+ * evidence and therefore sends the gate to a reviewer rather than passing it.
+ *
  * The camera is opened *before* the challenge is fetched. The button says
  * "open camera", so that is what it must do first; fetching first meant a
  * server error swallowed the permission prompt entirely and the person was
@@ -80,11 +89,15 @@ export default function Gate() {
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [prompt, setPrompt] = useState(null)
+  // Null until the person chooses. Not defaulted to true: the point of the
+  // warning is that the flashing path is opted into, not opted out of.
+  const [flashing, setFlashing] = useState(null)
 
   useEffect(() => () => stopCamera(streamRef.current), [])
 
-  const begin = useCallback(async () => {
+  const begin = useCallback(async (wantsFlash) => {
     setError(null)
+    setFlashing(wantsFlash)
     setPhase('opening')
 
     // 1. Camera first. A denied permission is a different problem from a
@@ -116,7 +129,7 @@ export default function Gate() {
       const res = await fetch(`${API}/challenge`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ gate_id: id }),
+        body: JSON.stringify({ gate_id: id, flashing: wantsFlash }),
       })
       if (!res.ok) throw new Error(await describe(res))
       setChallenge(await res.json())
@@ -178,22 +191,59 @@ export default function Gate() {
   }, [challenge, gateId])
 
   if (phase === 'consent' || phase === 'opening') {
+    const busy = phase === 'opening'
     return (
       <main style={S.page}>
         <Mark />
         <h1 style={{ fontSize: 28, margin: '18px 0 4px' }}>Verify you're here</h1>
         <p className="muted" style={S.note}>
-          We'll flash a few colours on screen and take several photos. We check
-          that a real person is present and that it's you.
+          A few photos over a few seconds. We check that a real person is
+          present, and that it's you.
         </p>
-        <div className="card" style={{ maxWidth: 420, marginTop: 14, textAlign: 'left' }}>
+
+        {/* Physical safety, stated before the data notice and before either
+            button. A person who cannot safely watch this needs to know that
+            first — everything else on this screen can wait. */}
+        <div className="alert alert-amber" style={{ maxWidth: 420, marginTop: 16, textAlign: 'left' }}>
+          <p className="eyebrow" style={{ marginBottom: 8 }}>
+            flashing lights
+          </p>
+          <p className="small" style={{ margin: 0 }}>
+            The standard check <strong>flashes colours on screen</strong>. This
+            can trigger a seizure in people with photosensitive epilepsy. The
+            flashes are kept below three per second and avoid saturated red, but
+            if you are photosensitive — or simply would rather not — there is a
+            version that never flashes.
+          </p>
+          <button
+            className="btn"
+            style={{ marginTop: 12, width: '100%' }}
+            onClick={() => begin(false)}
+            disabled={busy}
+          >
+            {busy && flashing === false
+              ? <><Spinner /> Opening camera…</>
+              : 'Use the no-flash check'}
+          </button>
+          <p className="small dim" style={{ margin: '8px 0 0' }}>
+            It measures less, so a person reviews the result instead of the
+            system deciding on its own.
+          </p>
+        </div>
+
+        <div className="card" style={{ maxWidth: 420, marginTop: 12, textAlign: 'left' }}>
           <p className="eyebrow" style={{ marginBottom: 8 }}>what we keep</p>
           <p className="small" style={{ margin: 0 }}>
             <strong>No photo is ever stored.</strong> Images exist in memory only
             for the length of this check. We keep a derived, non-reversible
             score — never anything that could reconstruct your face.
           </p>
+          <p className="small dim" style={{ margin: '8px 0 0' }}>
+            This is biometric processing.{' '}
+            <a href="/terms" target="_blank" rel="noreferrer">Terms and your rights</a>.
+          </p>
         </div>
+
         {error && (
           <div className="alert" style={{ maxWidth: 420, marginTop: 14 }}>
             <p className="small" style={{ margin: 0 }}>{error}</p>
@@ -201,11 +251,11 @@ export default function Gate() {
         )}
         <button
           className="btn btn-primary"
-          style={{ marginTop: 22 }}
-          onClick={begin}
-          disabled={phase === 'opening'}
+          style={{ marginTop: 18 }}
+          onClick={() => begin(true)}
+          disabled={busy}
         >
-          {phase === 'opening'
+          {busy && flashing !== false
             ? <><Spinner /> Opening camera…</>
             : error ? 'Try again' : 'I understand — open camera'}
         </button>
@@ -232,10 +282,18 @@ export default function Gate() {
       {phase === 'ready' && (
         <>
           <p className="muted" style={{ ...S.note, marginTop: 18 }}>
-            {challenge?.frames?.length} photos over a few seconds. The screen
-            will flash colours — hold still and look straight ahead, and near
-            the end you'll be asked to turn your head once.
+            {challenge?.frames?.length} photos over a few seconds.{' '}
+            {challenge?.flashing === false
+              ? 'The screen stays one steady colour.'
+              : 'The screen will flash colours.'}{' '}
+            Hold still and look straight ahead — near the end you'll be asked to
+            turn your head once.
           </p>
+          {challenge?.flashing === false && (
+            <p className="small dim" style={{ ...S.note, marginTop: 0 }}>
+              No-flash check — a person will review the result.
+            </p>
+          )}
           <button className="btn btn-primary" onClick={runCapture}>Start check</button>
         </>
       )}

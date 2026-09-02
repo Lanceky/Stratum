@@ -21,6 +21,17 @@ between two frames under two known illuminants, which is a physical claim that
 holds for everyone. An earlier design compared each frame against the session
 median; that is subtly broken, because a sequence of three bright colours would
 still force one frame below the median and fail an honest capture.
+
+**A flashing screen can cause seizures, so the physics is bounded by safety
+before it is bounded by anything else.** Content that flashes between roughly 3
+and 30 Hz — saturated red worst of all — triggers seizures in people with
+photosensitive epilepsy. WCAG 2.3.1 makes that a Level A criterion, which is to
+say a floor rather than a refinement. Two constraints follow, and both are
+enforced here rather than left to the client: no frame may be held for less than
+`MIN_HOLD_MS`, and no palette colour may be a saturated red. `derive` also has a
+non-flashing mode for anyone who cannot safely see the sequence at all; it
+cannot measure the light response, and says so, rather than quietly scoring a
+weaker capture as though it were the full one.
 """
 
 from __future__ import annotations
@@ -42,6 +53,25 @@ LUMINANCE_MARGIN = 0.15
 RED_RATIO_MARGIN = 0.08
 
 POSES = ("neutral", "left", "right", "up")
+
+# WCAG 2.3.1 (Level A), "Three Flashes or Below Threshold". Content passes if it
+# flashes no more than three times a second *or* stays under the general and red
+# flash thresholds. The second route is closed to us: LUMINANCE_MARGIN requires
+# luminance steps of at least 0.15, which is already above the 0.1 general flash
+# threshold, and shrinking the steps below it would leave nothing to measure. So
+# the rate is the only lever, and sitting exactly on the 3/s line is not a
+# margin. 500 ms floors the sequence at two transitions a second.
+#
+# Five frames at 500 ms is 2 s of holds, comfortably inside WINDOW_MS.
+MIN_HOLD_MS = 500
+DEFAULT_HOLD_MS = 500
+
+# WCAG's threshold for a saturated red, the hue that is disproportionately
+# likely to provoke a seizure: the red share of *linearised* light at or above
+# 0.8. Linearised matters. #FF2E20 is 0.766 by the raw sRGB channel ratio and so
+# looks safe, but 0.960 once gamma is undone — the naive form clears a colour
+# that the standard forbids.
+SATURATED_RED_RATIO = 0.8
 
 # Four neutral frames give C(4,2)=6 same-pose pairs, the minimum evidence the
 # illumination signal needs to clear its own bar; the fifth carries the pose.
@@ -74,18 +104,56 @@ class Colour:
         total = sum(self.rgb)
         return self.rgb[0] / total if total > 0 else 1 / 3
 
+    @property
+    def linear_rgb(self) -> tuple[float, float, float]:
+        """
+        sRGB with the display gamma undone, i.e. light rather than signal.
+
+        Everything about a *perceptual* judgement — how bright this looks, how
+        red it looks to the visual system that a flash is provoking — has to be
+        made here. The stored 0-255 values are gamma-encoded, so arithmetic on
+        them systematically understates how much of a dark colour's light is
+        red.
+        """
+        return tuple(c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+                     for c in self.rgb)
+
+    @property
+    def saturated_red(self) -> bool:
+        """WCAG's red flash test: is this the hue that provokes seizures?"""
+        r, g, b = self.linear_rgb
+        total = r + g + b
+        return total > 0 and r / total >= SATURATED_RED_RATIO
+
 
 # Chosen to span both axes the check reasons about: bright vs dark, and
 # red-dominant vs red-starved. A palette that only varied brightness could not
 # test `redness` at all.
+#
+# The red-dominant end is magenta rather than red, and that is a safety
+# constraint rather than an aesthetic one. Every colour with enough red to be
+# called red is a WCAG saturated red once linearised — the ceiling under the 0.8
+# threshold is a dark orange whose red_ratio lands within RED_RATIO_MARGIN of
+# amber, making the pair untestable. Magenta buys the hue separation by adding
+# blue instead of removing red. It costs nothing measurable: it yields *more*
+# testable predictions than #FF2E20 did, because its luminance sits mid-range
+# and so clears LUMINANCE_MARGIN against both ends rather than only the bright
+# one. `test_challenge.py` holds both properties.
 PALETTE = (
     Colour("white", "#FFFFFF"),
-    Colour("red", "#FF2E20"),
+    Colour("magenta", "#D250B9"),
     Colour("cyan", "#20E8FF"),
     Colour("dim", "#12121A"),
     Colour("amber", "#FFB020"),
     Colour("violet", "#7028FF"),
 )
+
+# The single illuminant of the non-flashing challenge. Held for the whole
+# capture, so the screen makes exactly one transition — and one transition is
+# not a flash, which puts this path outside WCAG 2.3.1 rather than merely inside
+# its limits. Deliberately not a palette member: it is never drawn against
+# another colour, because the point of it is that nothing is.
+STEADY = Colour("steady", "#F2F2F2")
 
 
 @dataclass(frozen=True)
@@ -130,6 +198,7 @@ class Challenge:
     hold_ms: int
     window_ms: int
     predictions: tuple[Prediction, ...] = field(default=())
+    flashing: bool = True
 
     @property
     def hd_frame(self) -> int:
@@ -149,6 +218,7 @@ class Challenge:
             "pose_prompt": self.pose_prompt,
             "hold_ms": self.hold_ms,
             "window_ms": self.window_ms,
+            "flashing": self.flashing,
             "predictions": [p.as_dict() for p in self.predictions],
         }
 
@@ -159,11 +229,16 @@ class Challenge:
         The predictions are withheld. Telling a client which direction each
         score is expected to move would hand an attacker the answer key, and
         the client has no use for them — scoring happens on the server.
+
+        `flashing` is disclosed, because the browser has to know whether it is
+        about to strobe: it decides both the warning shown beforehand and
+        whether the capture loop repaints between frames at all.
         """
         return {"frames": [f.as_dict() for f in self.frames],
                 "pose_prompt": self.pose_prompt,
                 "hold_ms": self.hold_ms,
-                "window_ms": self.window_ms}
+                "window_ms": self.window_ms,
+                "flashing": self.flashing}
 
 
 def _seed(nonce: str, secret: str) -> int:
@@ -213,8 +288,9 @@ def _predict(frames: tuple[Frame, ...]) -> tuple[Prediction, ...]:
     return tuple(out)
 
 
-def derive(nonce: str, *, n_frames: int = DEFAULT_FRAMES, hold_ms: int = 220,
-           window_ms: int = 9000, key: str | None = None) -> Challenge:
+def derive(nonce: str, *, n_frames: int = DEFAULT_FRAMES,
+           hold_ms: int = DEFAULT_HOLD_MS, window_ms: int = 9000,
+           flashing: bool = True, key: str | None = None) -> Challenge:
     """
     Build the challenge for a nonce. Same nonce and secret, same challenge.
 
@@ -235,6 +311,15 @@ def derive(nonce: str, *, n_frames: int = DEFAULT_FRAMES, hold_ms: int = 220,
     the illumination check cannot reach its own minimum evidence bar and
     abstains on every session, honest and attacker included. Five is the
     smallest budget at which it separates; see presence_report.py.
+
+    `flashing=False` is the accessible path, for someone who cannot safely watch
+    a flashing screen. It holds one steady illuminant for the whole capture, so
+    there is no light response to predict and `predictions` comes back empty.
+    That is not a degraded version of the same test — it is a different, smaller
+    test, and check 1 reports the illumination signal as never having run rather
+    than as having failed. The gate then goes to a human. Refusing these
+    captures outright would be an accessibility exclusion; passing them on the
+    remaining signals alone would be claiming evidence nobody gathered.
     """
     if n_frames < MIN_FRAMES:
         raise ValueError(f"check 1 needs at least {MIN_FRAMES} frames: four "
@@ -244,10 +329,25 @@ def derive(nonce: str, *, n_frames: int = DEFAULT_FRAMES, hold_ms: int = 220,
         raise ValueError(f"n_frames cannot exceed the {len(PALETTE)}-colour "
                          "palette: two frames under the same colour would make "
                          "an untestable prediction")
+    # Refused rather than clamped. A caller asking for a faster sequence has a
+    # reason, and silently overriding it would leave them believing the capture
+    # is quicker than it is — while a clamp that a client-side override later
+    # undid would put a strobe on screen with nothing left to catch it.
+    if hold_ms < MIN_HOLD_MS:
+        raise ValueError(
+            f"hold_ms must be at least {MIN_HOLD_MS}ms: below it the screen "
+            "flashes faster than three times a second, which WCAG 2.3.1 "
+            "forbids because it can trigger a photosensitive seizure")
 
     rng = random.Random(_seed(nonce, key or secret()))
 
-    colours = rng.sample(PALETTE, k=n_frames)
+    if flashing:
+        colours = rng.sample(PALETTE, k=n_frames)
+    else:
+        # Still drawn from the generator so the pose and HD frame stay bound to
+        # the nonce and unpredictable; only the illuminant is fixed.
+        rng.sample(PALETTE, k=n_frames)
+        colours = [STEADY] * n_frames
     pose = rng.choice(POSES[1:])
     # The posed frame is always last: the client holds still, then moves once.
     poses = ["neutral"] * (n_frames - 1) + [pose]
@@ -257,12 +357,13 @@ def derive(nonce: str, *, n_frames: int = DEFAULT_FRAMES, hold_ms: int = 220,
 
     frames = tuple(Frame(i, colours[i], poses[i], i == hd_index, hold_ms)
                    for i in range(n_frames))
-    predictions = _predict(frames)
+    predictions = _predict(frames) if flashing else ()
 
-    if not predictions:
+    if flashing and not predictions:
         # Only reachable if a palette change made every drawn colour alike.
         raise ValueError("challenge palette yielded no testable prediction")
 
     return Challenge(nonce=nonce, frames=frames, pose_prompt=pose,
                      hold_ms=hold_ms, window_ms=window_ms,
-                     predictions=predictions)
+                     predictions=predictions, flashing=flashing)
+

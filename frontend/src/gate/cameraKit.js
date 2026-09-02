@@ -88,14 +88,26 @@ export async function captureFrame(videoEl, quality = 0.95) {
  * client in advance — that is what defeats a pre-recorded injected stream.
  *
  * `challenge` is the server's `client_view()`: frames are
- * `{index, colour, hex, pose, hd, hold_ms}`. `colour` is a name ("red"); `hex`
+ * `{index, colour, hex, pose, hd, hold_ms}`. `colour` is a name ("amber"); `hex`
  * is the value to actually paint. Each frame's own `hold_ms` is honoured
  * rather than a fixed delay, because check 1's timing signal fails any gap
  * shorter than the hold time it asked for.
+ *
+ * Every hold is floored at MIN_HOLD_MS as well. The server refuses to issue a
+ * faster sequence, so this is redundant against a correct server — which is
+ * the point. The failure it guards is a spec that arrives malformed, from a
+ * proxy or a stale deployment, and the consequence of that reaching the screen
+ * is a strobe in front of someone with photosensitive epilepsy. The check that
+ * costs nothing goes on the side where the harm is physical.
  */
+export const MIN_HOLD_MS = 500
+
 export async function captureChallengeSequence(videoEl, flashEl, challenge, opts = {}) {
-  const { settleMs = 220, quality = 0.95, onFrame } = opts
+  const { settleMs = MIN_HOLD_MS, quality = 0.95, onFrame } = opts
   const frames = []
+  // A steady challenge paints once and never repaints, so the screen makes one
+  // transition for the whole capture instead of one per frame.
+  const flashing = challenge.flashing !== false
 
   for (const f of challenge.frames) {
     // The prompt has to be shown *before* the hold, not after: the pose is
@@ -103,12 +115,14 @@ export async function captureChallengeSequence(videoEl, flashEl, challenge, opts
     // shutter has closed has been asked for nothing.
     onFrame?.(f, frames.length, challenge.frames.length)
 
-    flashEl.style.backgroundColor = f.hex
-    flashEl.style.opacity = '1'
+    if (flashing || frames.length === 0) {
+      flashEl.style.backgroundColor = f.hex
+      flashEl.style.opacity = '1'
+    }
 
     // Let the display and the sensor's auto-exposure settle before sampling,
     // then stay on the colour for as long as the challenge demanded.
-    const hold = Math.max(f.hold_ms ?? 0, settleMs)
+    const hold = Math.max(f.hold_ms ?? 0, settleMs, MIN_HOLD_MS)
     await new Promise((r) => setTimeout(r, hold))
 
     const blob = await captureFrame(videoEl, quality)

@@ -10,6 +10,7 @@ import Review from './review/Review.jsx'
 import Verify from './verify/Verify.jsx'
 import Dashboard from './dashboard/Dashboard.jsx'
 import Claim from './claim/Claim.jsx'
+import Terms from './terms/Terms.jsx'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
@@ -260,6 +261,13 @@ function Home() {
             ))}
           </div>
         </section>
+
+        <footer className="between" style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
+          <p className="dim small" style={{ margin: 0 }}>
+            Prototype. Simulated figures, demo key, no real identities.
+          </p>
+          <Link to="/terms" className="small">Terms &amp; safety notices</Link>
+        </footer>
       </div>
     </main>
   )
@@ -275,6 +283,7 @@ createRoot(document.getElementById('root')).render(
       <Route path="/verify" element={<Verify />} />
       <Route path="/claim" element={<Claim />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/terms" element={<Terms />} />
     </Routes>
   </BrowserRouter>
 )

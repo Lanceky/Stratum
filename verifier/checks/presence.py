@@ -15,15 +15,16 @@ Why more than one is needed, which is the part worth saying out loud:
 
     * An **injected stream** — OBS Virtual Camera replaying a genuine session —
       is a recording of a real 3D face, so depth alone does not catch it. It
-      cannot know what colour the screen flashed 200 ms ago, nor which way this
-      nonce asked the head to turn, so illumination and pose do. Measured: 0 of
-      60 injected sessions pass, against 60 of 60 live ones.
-    * A **printed photo** is a physical object. Under a red flash it really does
-      get redder, and it can be turned on cue, so neither illumination nor pose
-      catches it. It is flat, so geometry does — partially. Measured: enforcing
-      depth takes print from 97% accepted to 28%, and costs 4 points of honest
-      acceptance. That residual 28% is stated in `LIMITATIONS` rather than
-      rounded away. See `geometry` for why the signal is hard to sharpen.
+      cannot know what colour the screen flashed half a second ago, nor which
+      way this nonce asked the head to turn, so illumination and pose do.
+      Measured: 0 of 60 injected sessions pass, against 60 of 60 live ones.
+    * A **printed photo** is a physical object. Under a red-dominant flash it
+      really does get redder, and it can be turned on cue, so neither
+      illumination nor pose catches it. It is flat, so geometry does —
+      partially. Measured: enforcing depth takes print from 97% accepted to
+      28%, and costs 4 points of honest acceptance. That residual 28% is stated
+      in `LIMITATIONS` rather than rounded away. See `geometry` for why the
+      signal is hard to sharpen.
 
 That is a physics argument rather than a heuristic one, including where it runs
 out. Every figure above comes from a simulation, not a camera; no physical
@@ -112,9 +113,14 @@ class Signal:
     passed: bool
     score: float
     detail: dict = field(default_factory=dict)
+    # Separate from `passed` for the reason fusion keeps them separate: a
+    # signal that never ran has produced no evidence, and a `passed=False`
+    # meaning "did not look" is indistinguishable from one meaning "looked and
+    # was not satisfied".
+    ran: bool = True
 
     def as_dict(self) -> dict:
-        return {"name": self.name, "passed": self.passed,
+        return {"name": self.name, "passed": self.passed, "ran": self.ran,
                 "score": round(self.score, 4), "detail": self.detail}
 
 
@@ -126,16 +132,47 @@ class PresenceResult:
     @property
     def score(self) -> float:
         """Lowest signal, not the average — a weak link is not offset by a strong one."""
-        return min((s.score for s in self.signals), default=0.0)
+        return min((s.score for s in self.signals if s.ran), default=0.0)
 
     @property
     def failed_signals(self) -> list[str]:
-        return [s.name for s in self.signals if not s.passed]
+        return [s.name for s in self.signals if s.ran and not s.passed]
+
+    @property
+    def undecided_signals(self) -> list[str]:
+        return [s.name for s in self.signals if not s.ran]
+
+    @property
+    def ran(self) -> bool:
+        """
+        Did check 1 reach a conclusion?
+
+        An unrun signal leaves the question open — unless a signal that *did*
+        run was violated, in which case the check has an answer and the answer
+        is no. Reporting `ran=False` there would send a real failure to a human
+        as though it were merely unmeasured, which is the one direction this
+        system must not round in.
+        """
+        if not self.passed:
+            return True
+        return all(s.ran for s in self.signals)
+
+    @property
+    def reason(self) -> str:
+        """Fusion quotes this verbatim to a reviewer, so it says what is missing."""
+        if self.passed and self.undecided_signals:
+            return (f"{', '.join(self.undecided_signals)} did not run, so this "
+                    "capture carries less evidence than a full one. Every "
+                    "signal that did run was satisfied.")
+        return ""
 
     def as_dict(self) -> dict:
         return {"check": 1, "name": "presence", "passed": self.passed,
+                "ran": self.ran,
                 "score": round(self.score, 4),
                 "failed": self.failed_signals,
+                "undecided": self.undecided_signals,
+                "reason": self.reason,
                 "limitations": LIMITATIONS,
                 "signals": [s.as_dict() for s in self.signals]}
 
@@ -179,7 +216,23 @@ def illumination(frames: list[dict], challenge: Challenge) -> Signal:
     brightness, which the open web does not give us — a user can dim their
     display and we would never know. The sign of a difference survives that,
     which is what makes the check deployable outside a lab.
+
+    On a non-flashing challenge there is no colour sequence and so nothing to
+    predict. That is reported as not having run, not as a failure: the person
+    took the accessible path, and refusing them would build the exclusion into
+    the one check they cannot opt out of. `PresenceResult.ran` carries it up to
+    fusion, which sends the gate to a human.
     """
+    if not challenge.flashing:
+        return Signal(
+            "illumination", False, 0.0,
+            {"reason": "the challenge held one steady colour, so there was no "
+                       "light response to measure. This is the non-flashing "
+                       "capture path, offered because a flashing screen can "
+                       "trigger a photosensitive seizure.",
+             "decided": 0, "correct": 0, "abstained": 0, "predictions": []},
+            ran=False)
+
     by_index = {int(f.get("frame_index", i)): f for i, f in enumerate(frames)}
     noise = max(score_noise(frames), 1e-6)
     deadband = max(MIN_DEADBAND, DEADBAND_SIGMA * noise)
@@ -483,7 +536,7 @@ def timing(frames: list[dict], challenge: Challenge, issued_at: float) -> Signal
 def evaluate(frames: list[dict], challenge: Challenge,
              issued_at: float = 0.0) -> PresenceResult:
     """
-    Run every signal. Every one must hold.
+    Run every signal. Every one that runs must hold.
 
     Conjunction, not a weighted sum. Each signal covers an attack the others
     miss, so a high score on two of them says nothing about the third, and
@@ -493,6 +546,10 @@ def evaluate(frames: list[dict], challenge: Challenge,
     Geometry is the only signal that catches a printed photograph, and it does
     so only partially, so `LIMITATIONS` travels with every result rather than
     letting a pass imply more coverage than was measured.
+
+    A signal that did not run is excluded from the conjunction rather than
+    counted against it — and `PresenceResult.ran` then reports that check 1 did
+    not settle the question, so the gate cannot pass on the remainder.
     """
     signals = [
         illumination(frames, challenge),
@@ -500,4 +557,4 @@ def evaluate(frames: list[dict], challenge: Challenge,
         timing(frames, challenge, issued_at),
         geometry(frames, challenge),
     ]
-    return PresenceResult(all(s.passed for s in signals), signals)
+    return PresenceResult(all(s.passed for s in signals if s.ran), signals)

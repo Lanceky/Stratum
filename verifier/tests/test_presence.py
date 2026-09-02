@@ -274,3 +274,98 @@ def test_result_is_json_serialisable():
     spec, frames = sessions("live")[0]
     out = evaluate(frames, spec, issued_at=frames[0]["captured_at"] - 1.0).as_dict()
     assert json.loads(json.dumps(out))["check"] == 1
+
+
+# ── the non-flashing path ─────────────────────────────────────────────────
+#
+# Someone with photosensitive epilepsy cannot safely watch the colour sequence,
+# so there is a capture path without it. The question these tests settle is what
+# that path is *worth*, and the answer has to be "less, and visibly less" — a
+# fallback that quietly passed would turn an accessibility feature into the
+# cheapest way past check 1.
+
+
+def _steady(n: int = 8):
+    return tuple((spec, sa.session(spec, medium="live", seed=1000 + s))
+                 for s in range(n)
+                 if (spec := ch.derive(f"steady-{s}", flashing=False, key=KEY)))
+
+
+def test_illumination_does_not_run_rather_than_failing():
+    """
+    The distinction fusion is built on. `passed=False` with `ran=True` means the
+    physics was measured and contradicted; here nothing was measured, and
+    reporting a failure would accuse the person of flunking a test that was
+    never put to them.
+    """
+    spec, frames = _steady(1)[0]
+    sig = illumination(frames, spec)
+    assert not sig.ran
+    assert sig.score == 0.0
+    assert "photosensitive" in sig.detail["reason"]
+
+
+def test_a_steady_capture_does_not_reach_an_automatic_pass():
+    """
+    The invariant, stated as one: a steady capture can never both be satisfied
+    and be settled. One quarter of the evidence was never gathered, so however
+    well the rest scores there is nothing here that fusion may turn into a PASS.
+
+    Not asserted as "always undecided" — a steady capture whose geometry is
+    genuinely bad is a FAIL, and some simulated sessions are. That direction is
+    covered below.
+    """
+    settled_passes = 0
+    for spec, frames in _steady():
+        result = evaluate(frames, spec, issued_at=frames[0]["captured_at"] - 1.0)
+        assert result.undecided_signals == ["illumination"]
+        assert "illumination" not in result.failed_signals
+        settled_passes += result.passed and result.ran
+    assert settled_passes == 0
+
+
+def test_a_steady_capture_still_measures_the_signals_it_can():
+    """
+    Not a blanket abstention. Pose, timing and geometry ran against a live
+    session and are expected to hold — otherwise the fallback would be an
+    unconditional REVIEW button, which is a bypass wearing an accessibility
+    label.
+    """
+    held = 0
+    for spec, frames in _steady():
+        result = evaluate(frames, spec, issued_at=frames[0]["captured_at"] - 1.0)
+        ran = [s for s in result.signals if s.ran]
+        assert {s.name for s in ran} == {"pose", "timing", "geometry"}
+        held += all(s.passed for s in ran)
+    assert held >= 6
+
+
+def test_a_violated_signal_still_fails_a_steady_capture():
+    """
+    The one direction the fallback must not round in. A steady capture whose
+    timing is wrong has an answer, and the answer is no — reporting it as
+    merely unmeasured would send a real violation to a reviewer as a shrug.
+    """
+    spec, frames = _steady(1)[0]
+    result = evaluate(frames, spec, issued_at=frames[-1]["captured_at"] + 60.0)
+    assert not result.passed
+    assert result.ran, "an unrun signal must not mask a violated one"
+    assert "timing" in result.failed_signals
+
+
+def test_a_steady_capture_reaches_review_and_not_pass():
+    """End to end through fusion: the verdict a person actually gets."""
+    import fusion
+
+    spec, frames = _steady(1)[0]
+    presence = evaluate(frames, spec,
+                        issued_at=frames[0]["captured_at"] - 1.0).as_dict()
+    decision = fusion.fuse({
+        "presence": presence,
+        "authenticity": {"ran": True, "passed": True, "score": 0.9},
+        "binding": {"ran": True, "passed": True, "score": 0.9},
+    }, mode="verify_identity")
+
+    assert decision.verdict == fusion.REVIEW
+    assert decision.requires_human
+    assert any("illumination" in r for r in decision.reasons)
