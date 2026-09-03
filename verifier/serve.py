@@ -39,6 +39,37 @@ os.environ.setdefault("STRATUM_API_MODE", "replay")
 from app import app, store  # noqa: E402
 
 
+def _allow_browser_origins() -> None:
+    """Let the hosted frontend call this service cross-origin.
+
+    `app.py` has no CORS layer, and correctly so: in development vite proxies
+    /api to this process, and in a single-origin deployment nothing ever
+    crosses. Both are same-origin by construction. It only stops being true
+    when the frontend is hosted apart from the API — which is exactly this
+    deployment, frontend on one host and verifier on another.
+
+    So the policy lives here rather than in the application, next to the other
+    facts that are true of *this host* and not of the software.
+
+    Explicit origins rather than a wildcard, and no credentials: the browser
+    refuses `*` with credentials anyway, and every request here is
+    unauthenticated. Preview deployments get their own generated hostname, so
+    the regex covers them without listing each one.
+    """
+    from fastapi.middleware.cors import CORSMiddleware
+
+    origins = [o.strip() for o in
+               os.environ.get("STRATUM_CORS_ORIGINS", "").split(",") if o.strip()]
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins or ["http://localhost:5173", "https://localhost:5173"],
+        allow_origin_regex=r"https://[a-z0-9-]+\.vercel\.app",
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
 def _seed_review_queue() -> None:
     """Put the demo gates in REVIEW, once, if nothing is there yet.
 
@@ -57,6 +88,16 @@ def _seed_review_queue() -> None:
     with TestClient(app) as client:
         demo_seed.seed(client, store)
 
+
+# Order matters: middleware must be registered before anything starts the app,
+# and seeding starts it. Kept as separate attempts so a failure in one is
+# reported as itself — a CORS problem and an empty review queue have nothing to
+# do with each other, and one message covering both would misdirect whoever
+# reads the log.
+try:
+    _allow_browser_origins()
+except Exception as exc:  # noqa: BLE001
+    print(f"[serve] CORS not configured: {type(exc).__name__}: {exc}")
 
 try:
     _seed_review_queue()

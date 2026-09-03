@@ -54,6 +54,14 @@ services:
       - key: STRATUM_DB
         value: /tmp/stratum.db
 
+      # Browser origins allowed to call this service cross-origin. Only needed
+      # if the frontend talks to this host directly — set VITE_XANO_API_BASE on
+      # Vercel to this service's URL and every console switches over with no
+      # code change. Preview deployments are matched by pattern, so only a
+      # custom domain needs listing here.
+      - key: STRATUM_CORS_ORIGINS
+        value: https://stratum-two-chi.vercel.app
+
       # Signing key for issued claims, and the HMAC secret the nullifier is
       # derived under. Absent, the verifier still runs: /health reports
       # can_sign: false and every claim payload is stamped dev_secret, so a
