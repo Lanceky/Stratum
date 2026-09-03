@@ -991,6 +991,14 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   padding: 48px 24px 96px;
 }
 
+/* The claim flow reads two columns wide rather than one, so it gets the home
+   page's measure instead of a step's. */
+.wide-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 40px 24px 96px;
+}
+
 /* ── the end of a step ────────────────────────────────────────────────────
    A terminal state that names what it opened. Bordered on one side rather
    than boxed: it is the continuation of the result above it, not a separate
@@ -1019,6 +1027,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 
 @media (min-width: 1500px) {
   .home { max-width: 1340px; }
+  .wide-page { max-width: 1340px; }
 
   /* The agent console is mostly request and response bodies, and a monospace
      dump forced through a 760px column wraps into something several times

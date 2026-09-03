@@ -58,10 +58,12 @@ const VERDICT_LINE = {
   REVIEW: 'The distance falls in the band where a relative and a badly captured photograph overlap. The machine will not decide this one.',
 }
 
+// The split and the rail are described by .review-split and .review-rail,
+// which this page already asked for by class. They were *also* set inline,
+// and an inline style beats a class, so the responsive rules that collapse
+// both on a narrow screen never applied: the 360px column stayed 360px on a
+// phone and pushed the page sideways. Removing the duplicate is the fix.
 const S = {
-  page: { maxWidth: 1180, margin: '0 auto', padding: '40px 24px 96px' },
-  split: { display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0,1fr) 360px', alignItems: 'start' },
-  rail: { position: 'sticky', top: 24, display: 'grid', gap: 14 },
   pick: { display: 'grid', gap: 8 },
   dist: { display: 'grid', gap: 6, marginTop: 14 },
   bar: { position: 'relative', height: 10, borderRadius: 5, background: 'var(--surface-2)' },
@@ -264,7 +266,7 @@ export default function Claim() {
   const enrolled = roster?.roster_size ?? 0
 
   return (
-    <main style={S.page}>
+    <main className="wide-page">
       <div className="wrap" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
         <Link to="/" className="dim small"><Mark /> ← back</Link>
         <span className="dim small mono">{context}</span>
@@ -281,7 +283,7 @@ export default function Claim() {
         That caveat travels onto the certificate.
       </p>
 
-      <div style={S.split} className="review-split">
+      <div className="review-split">
         <div style={{ display: 'grid', gap: 20 }}>
           <Card title="the campaign roster"
             right={<span className="dim small">{enrolled} enrolled</span>}>
@@ -436,7 +438,7 @@ export default function Claim() {
           )}
         </div>
 
-        <aside style={S.rail} className="review-rail">
+        <aside className="review-rail">
           <Card title="who walks up">
             <p className="small muted" style={{ marginTop: 0 }}>
               Enrol somebody, then choose who presents themselves. The useful
