@@ -56,22 +56,52 @@ const UNBUILT = [
   { to: '/dashboard', name: 'Tenant dashboard', line: 'gates, attestations, typosquat sweep' },
 ]
 
+// The origin decides what a failed /health means. On a developer's machine it
+// means the verifier is not running and `make verifier` is the answer. On a
+// hosted origin it usually means the free-tier instance stopped after fifteen
+// idle minutes and is taking its 30-60 seconds to boot — the same message
+// would send a visitor looking for a terminal they do not have.
+const HOSTED = !['localhost', '127.0.0.1', ''].includes(window.location.hostname)
+
+// The host's router answers with these while the process is still binding.
+// They mean "not yet", not "not there".
+const BOOTING = [502, 503, 504]
+
+// How long a hosted failure is read as a cold start rather than an outage.
+// Above the 30-60s a free instance takes, below the point where insisting it
+// is "starting" stops being credible.
+const WAKE_WINDOW_MS = 90_000
+
 function useSystem() {
   const [sys, setSys] = useState(null)
   useEffect(() => {
     let alive = true
+    let inFlight = false
+    const openedAt = Date.now()
     // One request, not three. The counts come from /health because the server
     // is the only thing that can count gates it has not listed — the earlier
     // version called /gates with no state, got the REVIEW page back, and
     // labelled it "gates opened", which was two names for the same number.
     const load = async () => {
+      // A cold start outlasts the poll interval, so without this the requests
+      // stack and each new one queues behind the boot it is waiting on.
+      if (inFlight) return
+      inFlight = true
       try {
         const r = await fetch(`${API}/health`)
-        if (!r.ok) throw new Error(`health ${r.status}`)
+        if (!r.ok) {
+          throw Object.assign(new Error(`health ${r.status}`),
+            { booting: BOOTING.includes(r.status) })
+        }
         const h = await r.json()
         if (alive) setSys(h)
-      } catch {
-        if (alive) setSys({ down: true })
+      } catch (e) {
+        if (!alive) return
+        const waking = HOSTED
+          && (e.booting || Date.now() - openedAt < WAKE_WINDOW_MS)
+        setSys({ down: true, waking })
+      } finally {
+        inFlight = false
       }
     }
     load()
@@ -101,9 +131,21 @@ function SystemCard({ sys }) {
   }
 
   if (sys.down) {
+    // A stopped free instance and a genuinely broken one look identical from
+    // here, so the distinction is drawn on how long we have been waiting
+    // rather than on anything the server said — it said nothing.
+    if (sys.waking) {
+      return <IdentityCard glyph={<KeyGlyph />} eyebrow="issuer" tone="amber"
+        title="waking the verifier…" status="starting"
+        chips={[{ k: 'up to a minute',
+          title: 'The verifier runs on a free instance that stops after fifteen '
+               + 'idle minutes. The first request pays for the boot; the rest '
+               + 'of the demo runs at normal speed.' }]} />
+    }
     return <IdentityCard glyph={<KeyGlyph />} eyebrow="issuer" tone="red"
       title="verifier not answering" status="offline"
-      chips={[{ k: 'run make verifier', title: 'Nothing here can be demonstrated until it is running.' }]} />
+      chips={[{ k: HOSTED ? 'nothing to demonstrate' : 'run make verifier',
+        title: 'Nothing here can be demonstrated until it is running.' }]} />
   }
 
   const iss = sys.issuer ?? {}

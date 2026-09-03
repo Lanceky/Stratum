@@ -1,0 +1,62 @@
+# Keep the hosted verifier awake.
+#
+# Render's free plan stops a service after 15 minutes without traffic, and the
+# next request pays a 30-60 second cold start while the process boots and
+# reseeds. A judge opening the demo cold would watch an apparently broken page
+# for a minute before anything appeared — the frontend is on a CDN and paints
+# instantly, so the delay reads as a broken backend rather than a waking one.
+#
+# A ping inside that window keeps the instance up. This is a workaround for a
+# plan limit, not a fix for a bug: the real answer is an instance that does not
+# stop, which costs money.
+#
+# Set the repository variable RENDER_HEALTH_URL to the service's /health URL
+# (Settings -> Secrets and variables -> Actions -> Variables). Without it every
+# run no-ops rather than failing, so the workflow can be merged before the
+# service exists.
+
+name: keep verifier awake
+
+on:
+  schedule:
+    # Every 10 minutes, comfortably inside the 15-minute idle window. GitHub
+    # delays scheduled runs under load, so the margin is deliberate — a 14
+    # minute interval would let a slipped run miss the window entirely.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# Nothing here reads or writes the repository.
+permissions: {}
+
+concurrency:
+  group: keep-verifier-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /health
+        env:
+          URL: ${{ vars.RENDER_HEALTH_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "RENDER_HEALTH_URL is not set — nothing to ping."
+            exit 0
+          fi
+
+          # --max-time 120 because a cold start is the case this exists for:
+          # the request that wakes the service is the slow one, and timing it
+          # out would abandon the boot it just paid for.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 120 "$URL" || echo 000)
+          echo "$URL -> $code"
+
+          # A waking service can answer 502 through Render's router while the
+          # process is still binding. That still counts: the instance is up,
+          # which is the only thing this job is trying to achieve. Only a
+          # complete failure to connect is worth a red run.
+          if [ "$code" = "000" ]; then
+            echo "::error::no response — the service may be suspended or the URL wrong"
+            exit 1
+          fi
