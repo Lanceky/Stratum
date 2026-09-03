@@ -71,3 +71,35 @@ services:
         sync: false
       - key: STRATUM_NULLIFIER_SECRET
         sync: false
+
+      # The one check that cannot run from recordings.
+      #
+      # STRATUM_API_MODE=replay above exists to conserve the Perfect Corp
+      # sensor grant, which is metered and cannot be topped up. Nutrient's is
+      # unmetered, so replaying it saves nothing — and a certificate embeds its
+      # issue time and gate id, so no two renders are the same bytes. There is
+      # no recording to return: the call is new every time, and replay raises
+      # rather than serving a stale document.
+      #
+      # Left as an explicit override rather than a default inside the code,
+      # because the test suite pins STRATUM_API_MODE=replay to assert nothing
+      # reaches the network. An integration that quietly exempted itself would
+      # keep that assertion green while making it untrue.
+      - key: NUTRIENT_API_MODE
+        value: live
+
+      # The grant issues one key per product. NUTRIENT_API_KEY is honoured as a
+      # single-key fallback, but the seal path needs the processor entitlement:
+      # /build renders the HTML, converts it to PDF/A-3b, and signs it, in that
+      # order — converting after signing would strip the signature's validity
+      # while leaving it visibly present.
+      #
+      # Without these the verifier still runs. The certificate route answers
+      # 503 and says the key is missing, rather than issuing an unsealed
+      # document that looks like the real thing.
+      - key: NUTRIENT_PROCESSOR_API
+        sync: false
+      - key: NUTRIENT_DATA_EXTRACTION_API
+        sync: false
+      - key: NUTRIENT_ACCESSIBILITY_API
+        sync: false
