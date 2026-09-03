@@ -1,0 +1,65 @@
+# Render blueprint for the verifier.
+#
+# The frontend stays on Vercel; this is only the Python service behind it,
+# reached through a same-origin /api rewrite so no CORS layer is needed (the
+# app has none).
+#
+# Deployed here rather than as a serverless function for one reason: state.
+# Every console is multi-step — the claim flow spans five requests that must
+# agree about the same gate and the same roster — and serverless gives each
+# instance its own disk. Measured on a serverless deployment: four enrolments
+# produced a roster of two, because the writes landed on different instances.
+# One long-lived process with one file is what the store was written for.
+
+services:
+  - type: web
+    name: stratum-verifier
+    runtime: python
+    plan: free
+    region: frankfurt
+
+    # The app is a package-less module tree that imports its siblings by bare
+    # name (`import store`, `import foxit`), so it has to run from inside its
+    # own directory.
+    rootDir: verifier
+
+    # Synthetic fixtures are gitignored and regenerated rather than committed,
+    # so a fresh clone has none. Without them the document tools return 503 and
+    # the agent console shows an agent that can do nothing — which argues the
+    # opposite of its point. Deterministic, and under a second.
+    buildCommand: pip install -r requirements.txt && python seed_fixtures.py
+
+    startCommand: uvicorn serve:app --host 0.0.0.0 --port $PORT
+
+    healthCheckPath: /health
+
+    envVars:
+      # Must be fully qualified here — Render reads a bare "3.13" only from a
+      # .python-version file. Pinned because the current default is 3.14, which
+      # has no scipy or opencv wheels and would try to build them from source.
+      # This is the version the test suite runs on.
+      - key: PYTHON_VERSION
+        value: 3.13.5
+
+      # Answer from recorded fixtures and never pretend a call was live. Set
+      # per-vendor keys in the dashboard to take any single check live; each
+      # one falls back to replay on its own.
+      - key: STRATUM_API_MODE
+        value: replay
+
+      # The free plan has no persistent disk, so this lives for as long as the
+      # instance does and is rebuilt on the next boot. Acceptable because there
+      # is only ever one instance: the demo state is disposable, but it is
+      # never inconsistent.
+      - key: STRATUM_DB
+        value: /tmp/stratum.db
+
+      # Signing key for issued claims, and the HMAC secret the nullifier is
+      # derived under. Absent, the verifier still runs: /health reports
+      # can_sign: false and every claim payload is stamped dev_secret, so a
+      # demo is never mistaken for a deployment. It refuses to invent a key
+      # rather than quietly inventing one — the same refusal the gates make.
+      - key: STRATUM_SIGNING_KEY
+        sync: false
+      - key: STRATUM_NULLIFIER_SECRET
+        sync: false

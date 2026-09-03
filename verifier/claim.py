@@ -95,7 +95,16 @@ def _secret() -> bytes:
 
 
 def using_dev_secret() -> bool:
-    return SECRET_ENV not in os.environ
+    """Whether the nullifier is being derived under the fallback constant.
+
+    Tests the value, not merely the key's presence. A hosting dashboard that
+    declares every variable and leaves the unused ones empty would otherwise
+    put SECRET_ENV in the environment as "", which _secret() correctly ignores
+    — and this would then report a real secret while a development one was in
+    use. The payload's honesty is the whole point of the flag, so the two have
+    to agree on what counts as configured.
+    """
+    return not os.environ.get(SECRET_ENV, "").strip()
 
 
 def nullifier(enrolment_id: str, context: str) -> str:
@@ -115,7 +124,9 @@ def nullifier(enrolment_id: str, context: str) -> str:
 
 
 def signing_key() -> str | None:
-    return os.getenv(KEY_ENV)
+    # Blank counts as absent, so a declared-but-empty dashboard variable
+    # produces "cannot sign" rather than an empty key that fails deeper in.
+    return os.environ.get(KEY_ENV, "").strip() or None
 
 
 def issuer_address() -> str | None:

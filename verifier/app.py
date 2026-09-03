@@ -43,7 +43,7 @@ CHECK_NUMBERS = {"presence": 1, "authenticity": 2, "binding": 3,
 # Local store. Xano replaces this as system of record once the instance exists;
 # the transition rules are identical either way, which is the point of keeping
 # them in gate.py rather than in a Xano function stack alone.
-store = Store(os.getenv("STRATUM_DB", ":memory:"))
+store = Store(env("STRATUM_DB", ":memory:"))
 
 # Set on first use by /demo/gate. Not persisted: if the process restarts the
 # next demo gate simply gets a fresh workflow, which costs nothing.
