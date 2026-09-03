@@ -21,9 +21,9 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
-import { Badge, Card, Chain, Hash, Mark, Spinner } from '../ui.jsx'
+import { Badge, Card, Chain, Hash, Mark, Rail, Spinner } from '../ui.jsx'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
@@ -635,10 +635,28 @@ export default function Review() {
   const [stale, setStale] = useState(null)
   const [refresh, setRefresh] = useState(0)
   const detailRef = useRef(null)
+  // A visitor arriving from the camera has one gate in this queue they care
+  // about. Landing them on the list and letting them find it turns the handoff
+  // into a search, so the step that sent them here names it.
+  const [params] = useSearchParams()
+  const arrivedWith = params.get('gate')
+  // Honoured once. Without this a reviewer who deliberately clicks a different
+  // gate is dragged back to the arrival one by the next fifteen-second poll.
+  const claimed = useRef(false)
   // A ref, not the state value, so the polling interval does not have to be
   // torn down and rebuilt every time a ruling starts or finishes.
   const busyRef = useRef(false)
   useEffect(() => { busyRef.current = busy }, [busy])
+
+  useEffect(() => {
+    if (claimed.current || !arrivedWith || gates === null) return
+    claimed.current = true
+    // Only if it is genuinely in the queue. The gate may have expired, or been
+    // ruled on in another tab, or the visitor may be returning to a finished
+    // run — in every one of those cases selecting it would open a detail pane
+    // on something that is no longer waiting for anyone.
+    if (gates.some((g) => g.gate_id === arrivedWith)) setSelected(arrivedWith)
+  }, [arrivedWith, gates])
 
   const loadQueue = useCallback(async () => {
     try {
@@ -743,6 +761,7 @@ export default function Review() {
           <Link to="/" style={{ color: 'inherit' }}><Mark /></Link>
           <span className="eyebrow" style={{ marginLeft: 'auto' }}>reviewer</span>
         </div>
+        <div className="rail-bar"><Rail at={2} /></div>
 
         <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border)' }}>
           <h1 style={{ fontSize: 16 }}>Awaiting a human</h1>

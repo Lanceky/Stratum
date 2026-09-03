@@ -906,10 +906,138 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 }
 .idcard-red .idcard-glyph svg { filter: drop-shadow(0 0 7px rgba(248, 81, 73, 0.45)); }
 
+/* ── the sequence rail ────────────────────────────────────────────────────
+   The three steps are an order, and an order is only useful while you are
+   inside it. On the home page it is a set of cards; on a step page it is this
+   — the same three names, compressed to a strip, so a visitor three screens
+   into the agent console can still see that two more sittings follow.
+
+   Completed steps are links and the rest are inert spans, which is a semantic
+   difference rather than a styled one: a step that has produced nothing has
+   nothing to show, and a keyboard user should not be able to tab into a dead
+   end the mouse cannot reach either. */
+
+.rail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 22px;
+  padding-left: 22px;
+  border-left: 1px solid var(--border);
+}
+
+.rail-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 4px 10px 4px 5px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.rail-n {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  border: 1px solid currentColor;
+  opacity: 0.9;
+}
+
+.rail-done { color: var(--ink-3); }
+.rail-done:hover { color: var(--ink); background: var(--surface-2); }
+.rail-done .rail-n {
+  border-color: var(--indigo);
+  color: var(--indigo-bright);
+  font-size: 10px;
+}
+
+.rail-now { color: var(--ink); background: var(--indigo-dim); }
+.rail-now .rail-n { border-color: var(--indigo-bright); color: var(--indigo-bright); }
+
+/* Not greyed into illegibility: the point of showing an unreached step is that
+   it can be read. It is dimmer than the current one and carries no affordance,
+   which is enough to say "not yet" without saying "not for you". */
+.rail-next { color: var(--ink-3); opacity: 0.55; }
+
+.rail-link {
+  width: 14px;
+  height: 1px;
+  background: var(--border);
+  flex: none;
+}
+
+/* The reviewer console has no room in its topbar, so the rail gets its own. */
+.rail-bar {
+  padding: 9px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.rail-bar .rail { margin: 0; padding: 0; border-left: 0; }
+
+/* A step page's reading column. A class rather than an inline width because
+   the right width is a function of the screen, and an inline style is the one
+   place a media query cannot reach. */
+
+.step-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+}
+
+/* ── the end of a step ────────────────────────────────────────────────────
+   A terminal state that names what it opened. Bordered on one side rather
+   than boxed: it is the continuation of the result above it, not a separate
+   announcement. */
+
+.next {
+  margin-top: 20px;
+  padding: 16px 0 2px 16px;
+  border-left: 2px solid var(--indigo);
+}
+
 /* ── responsive ───────────────────────────────────────────────────────────
    Kept last on purpose: a media query adds no specificity, so any equally
    specific rule declared after it wins and the override silently does
    nothing. */
+
+/* Large desktops.
+
+   The complaint this answers: on a wide monitor a step ran several screens
+   tall while two thirds of the glass sat empty, so reading one page meant
+   scrolling through three windows of it. The columns were capped for line
+   length — a 1400px paragraph is unreadable — but capping the *text* had been
+   done by capping the whole layout, which is a different thing. Here the
+   reading column stays honest and the space either side is given to the
+   material that was previously stacked underneath it. */
+
+@media (min-width: 1500px) {
+  .home { max-width: 1340px; }
+
+  /* The agent console is mostly request and response bodies, and a monospace
+     dump forced through a 760px column wraps into something several times
+     taller than it needs to be. Widening it is not a cosmetic preference: it
+     is the difference between reading the refusal and scrolling for it. */
+  .step-page { max-width: 980px; }
+  .home-hero { gap: 56px; }
+
+  /* The reviewer's evidence and the gate queue are read together, so on a wide
+     screen the detail pane stops being a narrow slot inside a narrow pane. */
+  .shell { grid-template-columns: minmax(340px, 420px) 1fr; }
+  .review-split { grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 24px; }
+}
+
+@media (min-width: 1500px) and (min-height: 820px) {
+  /* Enough glass to stop paginating the argument. */
+  .home { padding-top: 40px; }
+  .home-hero { margin-bottom: 40px; }
+}
 
 @media (max-width: 1000px) {
   .home-hero { grid-template-columns: 1fr; }
@@ -934,6 +1062,15 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 }
 
 @media (max-width: 900px) {
+  /* The step names do not fit beside the wordmark on a phone, but the sense of
+     place is worth keeping, so the numbers stay and the words go. Dropping the
+     rail entirely would leave the smallest screens, which are the ones most
+     likely to be doing the camera step, as the only place with no way back. */
+  .rail-name { display: none; }
+  .rail { margin-left: 12px; padding-left: 12px; gap: 4px; }
+  .rail-step { padding: 4px 5px; }
+  .rail-link { width: 8px; }
+
   .shell { grid-template-columns: 1fr; align-content: start; }
   .shell > aside { max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
   .shell > section { max-height: none; }

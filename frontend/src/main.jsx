@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigationType } from 'react-router-dom'
 
 import './theme.css'
 import { Mark, IdentityCard, KeyGlyph, middle } from './ui.jsx'
+import { STEPS } from './journey.js'
 import Gate from './gate/Gate.jsx'
 import Agent from './agent/Agent.jsx'
 import Review from './review/Review.jsx'
@@ -15,39 +16,30 @@ import Terms from './terms/Terms.jsx'
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
 /**
- * The demo is a single story told in three sittings, so it is presented as an
- * order rather than a menu.
+ * Start a new page at the top of it.
  *
- * A list of five equal cards makes every door look alike and leaves the visitor
- * to guess which one to open first. These three are not alternatives — each one
- * only means anything because of the one before it: the agent is refused, so a
- * human has to appear; the human's evidence is inconclusive, so a reviewer has
- * to rule; the ruling is worth nothing unless it leaves the building, so it is
- * sealed into a document.
+ * The browser restores scroll position on history navigation, which is right
+ * for going back and wrong for going forward: a single-page app never reloads,
+ * so following a link from the foot of a long page opened the next one already
+ * scrolled to its end. The visitor arrived at the bottom of a step they had
+ * not read, which on this site meant landing on a verdict before the evidence
+ * that produced it.
+ *
+ * Only on PUSH. POP is the back button, where the restored position is the
+ * whole point, and overriding it would lose a reviewer's place in the queue.
  */
-const PATH = [
-  {
-    to: '/agent',
-    n: '01',
-    name: 'An agent is refused',
-    line: 'Valid credentials, correct request, still refused — and the refusal written to the chain as evidence.',
-    outcome: 'A gate opens, and it needs a person.',
-  },
-  {
-    to: '/gate/demo',
-    n: '02',
-    name: 'A person answers',
-    line: 'Three checks: someone is present, the capture is not generated, and it is the enrolled signer.',
-    outcome: 'Two checks settle. The third cannot.',
-  },
-  {
-    to: '/review',
-    n: '03',
-    name: 'A reviewer settles it',
-    line: 'A sibling and a bad photograph overlap measurably, so those gates reach a named human.',
-    outcome: 'A ruling — and a sealed certificate.',
-  },
-]
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  const nav = useNavigationType()
+  useEffect(() => {
+    if (nav === 'POP') return
+    window.scrollTo(0, 0)
+    // The reviewer console scrolls its own panes rather than the document, so
+    // resetting the window alone leaves them where the last visit ended.
+    document.querySelectorAll('.pane, .review-rail').forEach((el) => { el.scrollTop = 0 })
+  }, [pathname, nav])
+  return null
+}
 
 // Routes that exist but are not built. Named plainly rather than hidden: a
 // door that opens onto nothing costs more trust than an absent one.
@@ -222,7 +214,7 @@ function Home() {
           </div>
 
           <div className="path">
-            {PATH.map((s) => (
+            {STEPS.map((s) => (
               <Link key={s.to} to={s.to} className="path-step">
                 <span className="path-n">{s.n}</span>
                 <h3 className="path-name">{s.name}</h3>
@@ -317,6 +309,7 @@ function Home() {
 
 createRoot(document.getElementById('root')).render(
   <BrowserRouter>
+    <ScrollToTop />
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/agent" element={<Agent />} />

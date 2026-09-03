@@ -22,16 +22,20 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 
-import { Badge, Mark, Spinner } from '../ui.jsx'
+import { Badge, Mark, Next, Rail, Spinner } from '../ui.jsx'
+import { remember, reviewLink } from '../journey.js'
 import { openCamera, stopCamera, captureChallengeSequence } from './cameraKit.js'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
 const S = {
   page: {
-    minHeight: '100vh',
+    // The topbar is 57px and only present on the consent and verdict screens.
+    // Subtracting it keeps a screen that fits from acquiring a scrollbar, which
+    // on the verdict screen would push the next step below the fold.
+    minHeight: 'calc(100vh - 57px)',
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     justifyContent: 'center', padding: 24, textAlign: 'center', gap: 4,
   },
@@ -125,6 +129,9 @@ export default function Gate() {
         id = (await made.json()).id
         setGateId(id)
       }
+      // Whether the agent opened this gate or the visitor entered at step two,
+      // this is the gate the reviewer console should land on.
+      remember(id)
 
       const res = await fetch(`${API}/challenge`, {
         method: 'POST',
@@ -193,8 +200,13 @@ export default function Gate() {
   if (phase === 'consent' || phase === 'opening') {
     const busy = phase === 'opening'
     return (
+      <>
+      <div className="topbar">
+        <Link to="/" style={{ textDecoration: 'none' }}><Mark /></Link>
+        <Rail at={1} />
+        <span className="eyebrow" style={{ marginLeft: 'auto' }}>the gate</span>
+      </div>
       <main style={S.page}>
-        <Mark />
         <h1 style={{ fontSize: 28, margin: '18px 0 4px' }}>Verify you're here</h1>
         <p className="muted" style={S.note}>
           A few photos over a few seconds. We check that a real person is
@@ -260,10 +272,22 @@ export default function Gate() {
             : error ? 'Try again' : 'I understand — open camera'}
         </button>
       </main>
+      </>
     )
   }
 
   return (
+    <>
+    {/* No chrome while the camera is running: the person is meant to be
+        looking at the lens, and a navigation bar at that moment is an
+        invitation to leave mid-capture. It returns with the verdict. */}
+    {phase === 'done' && (
+      <div className="topbar">
+        <Link to="/" style={{ textDecoration: 'none' }}><Mark /></Link>
+        <Rail at={1} />
+        <span className="eyebrow" style={{ marginLeft: 'auto' }}>the gate</span>
+      </div>
+    )}
     <main style={S.page}>
       <div ref={flashRef} style={S.flash} />
       {/* Removed once the camera is stopped: leaving the element mounted put a
@@ -310,13 +334,14 @@ export default function Gate() {
       {phase === 'scoring' && (
         <p className="muted" style={{ marginTop: 18 }}><Spinner /> Checking…</p>
       )}
-      {phase === 'done' && result && <Outcome result={result} />}
+      {phase === 'done' && result && <Outcome result={result} gateId={gateId} />}
       {error && phase !== 'done' && (
         <div className="alert" style={{ maxWidth: 420, marginTop: 14 }}>
           <p className="small" style={{ margin: 0 }}>{error}</p>
         </div>
       )}
     </main>
+    </>
   )
 }
 
@@ -335,8 +360,41 @@ const OUTCOME_COPY = {
   fail: 'This did not verify, so nothing was authorised.',
 }
 
-function Outcome({ result }) {
+/**
+ * Where each verdict leads.
+ *
+ * The gate page used to stop at the verdict, which stranded the visitor at
+ * exactly the moment the demo becomes interesting: they were told a reviewer
+ * now holds their request, and given no way to go and see that happen. Every
+ * outcome opens onto something, so every outcome says what.
+ */
+const OUTCOME_NEXT = {
+  review: {
+    eyebrow: 'step 03',
+    line: 'Your gate is in the queue now. The console is the other side of '
+        + 'this screen: the same evidence, read by the person who has to put '
+        + 'their name on the decision.',
+    cta: 'Watch a human settle it →',
+  },
+  pass: {
+    eyebrow: 'step 03',
+    line: 'This one settled without a person. The reviewer console holds the '
+        + 'gates that did not, which is where the harder half of the problem '
+        + 'is: a sibling and a bad photograph overlap measurably.',
+    cta: 'See the gates that could not settle →',
+  },
+  fail: {
+    eyebrow: 'step 03',
+    line: 'Nothing was authorised, and that is the correct outcome for a check '
+        + 'that did not verify. The console shows the cases where refusing '
+        + 'outright would have been the wrong answer.',
+    cta: 'See what needs a person →',
+  },
+}
+
+function Outcome({ result, gateId }) {
   const verdict = String(result.verdict ?? '').toLowerCase()
+  const next = OUTCOME_NEXT[verdict]
   return (
     <div style={{ marginTop: 20, maxWidth: 420 }}>
       <Badge value={result.state ?? result.verdict} />
@@ -358,6 +416,11 @@ function Outcome({ result }) {
             {result.reasons.map((r, i) => <li key={i}>{r}</li>)}
           </ul>
         </details>
+      )}
+      {next && (
+        <div style={{ textAlign: 'left' }}>
+          <Next {...next} to={reviewLink(gateId)} />
+        </div>
       )}
     </div>
   )

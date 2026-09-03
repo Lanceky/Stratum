@@ -10,6 +10,9 @@
  */
 
 import React from 'react'
+import { Link } from 'react-router-dom'
+
+import { STEPS } from './journey.js'
 
 /** A verdict, or the absence of one. Each state gets its own colour and word. */
 export function Badge({ value, title }) {
@@ -116,6 +119,63 @@ export function Chain({ events = [], brokenAt = null }) {
 
 export function Spinner() {
   return <span className="spin" aria-label="working" />
+}
+
+/**
+ * Where you are in the three-step sequence, carried at the top of every step.
+ *
+ * Without it a step page is a room with no windows: the home page establishes
+ * an order, and then each step drops the visitor somewhere that gives no sign
+ * it is part of anything. The rail is the same three names throughout, so the
+ * order the home page describes stays visible while it is being walked.
+ *
+ * Completed steps stay clickable and unfinished ones do not. A step whose
+ * evidence has not been produced yet cannot show anything, and a link that
+ * leads to an empty console teaches the visitor that the order is decorative.
+ */
+export function Rail({ at }) {
+  return (
+    <nav className="rail" aria-label="demo progress">
+      {STEPS.map((s, i) => {
+        const state = i < at ? 'done' : i === at ? 'now' : 'next'
+        const content = (
+          <>
+            <span className="rail-n">{i < at ? '✓' : s.n}</span>
+            <span className="rail-name">{s.short}</span>
+          </>
+        )
+        return (
+          <React.Fragment key={s.to}>
+            {i > 0 && <span className="rail-link" aria-hidden="true" />}
+            {state === 'done'
+              ? <Link to={s.to} className="rail-step rail-done">{content}</Link>
+              : <span className={`rail-step rail-${state}`}
+                  aria-current={state === 'now' ? 'step' : undefined}>{content}</span>}
+          </React.Fragment>
+        )
+      })}
+    </nav>
+  )
+}
+
+/**
+ * The end of a step, which is the beginning of the next one.
+ *
+ * Every terminal state on these pages used to stop at a result. A result is
+ * only the end of the story if you already knew there was no more of it, so
+ * each one now names what it opened and offers the door.
+ */
+export function Next({ eyebrow, line, to, cta, secondary }) {
+  return (
+    <div className="next">
+      {eyebrow && <p className="eyebrow" style={{ margin: '0 0 6px' }}>{eyebrow}</p>}
+      <p className="muted small" style={{ margin: '0 0 14px' }}>{line}</p>
+      <div className="wrap">
+        <Link className="btn btn-primary" to={to}>{cta}</Link>
+        {secondary && <Link className="btn" to={secondary.to}>{secondary.label}</Link>}
+      </div>
+    </div>
+  )
 }
 
 /**

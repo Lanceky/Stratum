@@ -14,12 +14,12 @@
 import React, { useCallback, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Hash, Mark, Spinner } from '../ui.jsx'
+import { Hash, Mark, Next, Rail, Spinner } from '../ui.jsx'
+import { remember } from '../journey.js'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
 const S = {
-  page: { maxWidth: 760, margin: '0 auto', padding: '48px 24px 96px' },
   call: { borderLeft: '2px solid var(--border)', paddingLeft: 16 },
   refused: { borderLeft: '2px solid var(--red)' },
   allowed: { borderLeft: '2px solid var(--indigo-bright)' },
@@ -292,6 +292,9 @@ export default function Agent() {
           if (!json?.id) throw new Error(`could not open a gate (${res.status})`)
           idRef.current = json.id
           setGateId(json.id)
+          // The gate this run opened is the one the next two steps are about,
+          // so it is carried rather than rediscovered.
+          remember(json.id)
         }
 
         setResults((prev) => ({
@@ -313,9 +316,10 @@ export default function Agent() {
     <>
       <div className="topbar">
         <Link to="/" style={{ textDecoration: 'none' }}><Mark /></Link>
+        <Rail at={0} />
         <span className="eyebrow" style={{ marginLeft: 'auto' }}>agent console</span>
       </div>
-      <main style={S.page}>
+      <main className="step-page">
       <h1 style={{ fontSize: 28, margin: '10px 0 12px' }}>An agent reaching for a signature</h1>
       <p className="muted" style={{ maxWidth: 620 }}>
         An agent can be handed the credentials to move money, sign contracts and close
@@ -364,10 +368,14 @@ export default function Agent() {
             Nothing above moved the gate any closer to being signed. It is still waiting on a
             person — which is the only way it can ever be signed at all.
           </p>
-          <div style={{ marginTop: 18, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Link className="btn btn-primary" to={`/gate/${gateId}`}>Hand it to a human →</Link>
-            <Link className="btn" to="/review">Reviewer console</Link>
-          </div>
+          <Next
+            eyebrow="step 02"
+            line="The gate the agent could not sign is open and waiting. Stand in
+                  front of it yourself: three checks run, and two of them will
+                  settle."
+            to={`/gate/${gateId}`}
+            cta="Answer it in person →"
+          />
         </div>
       )}
       </main>
