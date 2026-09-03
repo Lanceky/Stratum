@@ -53,13 +53,28 @@
   --pad: 16px;
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
             0 8px 24px rgba(1, 4, 9, 0.6);
+
+  /* The height of the glass, not the height of the window.
+     `100vh` is the *large* viewport — the size the page would be if the mobile
+     browser's toolbars were retracted — so a section sized in `vh` is taller
+     than what is visible while the toolbar is showing, and a `calc(100vh - x)`
+     that subtracts chrome for it ends up shorter than the screen once the
+     toolbar goes away. Either way the section stops short of the bottom edge
+     and the next one shows a sliver underneath it. `dvh` is the height that is
+     actually on screen right now, which is the only one worth laying out to. */
+  --vh: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root { --vh: 100dvh; }
 }
 
 * { box-sizing: border-box; }
 
-html, body, #root { height: 100%; }
+html { height: 100%; }
 
 body {
+  min-height: 100%;
   margin: 0;
   background: var(--bg);
   color: var(--ink);
@@ -85,7 +100,49 @@ body::before {
   mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.35) 60%, transparent 100%);
 }
 
-#root { position: relative; z-index: 1; }
+/**
+ * Every route fills the screen, without any rule knowing how tall the chrome is.
+ *
+ * A page here is either one element or a topbar followed by one — and the
+ * topbar is conditional on some routes (the gate hides it while the camera is
+ * running). Subtracting a measured constant for it therefore has to be wrong
+ * half the time: the version that fits the screen with the bar present falls
+ * exactly one bar short of the bottom without it, and the page ends mid-screen
+ * with the next section showing under it.
+ *
+ * So nothing subtracts. The root is a column the height of the glass and the
+ * page body is the item that grows, which makes the browser measure the chrome
+ * — including a topbar that wrapped to two lines on a narrow phone, which no
+ * constant could have anticipated. `flex-shrink: 0` keeps a page that is
+ * genuinely longer than the screen free to scroll.
+ */
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: var(--vh);
+  /* `viewport-fit=cover` in the document head lets the canvas run under the
+     notch and the home indicator, which is what makes the background reach the
+     physical edges. The content must not: `box-sizing: border-box` means this
+     padding comes out of the height above, so the page still measures a full
+     screen while its last control stops short of the indicator. Zero
+     everywhere without one. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex;
+  flex-direction: column;
+}
+
+#root > :last-child { flex: 1 0 auto; }
+
+/* Block layout lets an over-wide child overflow its parent quietly. Flex layout
+   does not: an item is floored at the widest unbreakable thing inside it, and
+   the page roots here centre themselves with `margin: 0 auto`, which opts them
+   out of stretching and makes them shrink-to-fit — so one long hash in the
+   agent console sized <main> to its own min-content and pushed the page wider
+   than the phone. Restoring an explicit full width puts the inline axis back to
+   how it behaved as a block; `max-width` and the auto margins still centre the
+   reading column. `flex-shrink: 0` keeps the topbar at its own height rather
+   than letting a tall page compress it. */
+#root > * { width: 100%; min-width: 0; flex-shrink: 0; }
 
 ::selection { background: var(--indigo-glow); color: #fff; }
 
@@ -312,10 +369,10 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
 .shell {
   display: grid;
   grid-template-columns: minmax(300px, 400px) 1fr;
-  min-height: 100vh;
+  min-height: var(--vh);
 }
 
-.pane { max-height: 100vh; overflow-y: auto; }
+.pane { max-height: var(--vh); overflow-y: auto; }
 
 .topbar {
   display: flex;
@@ -417,6 +474,11 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   padding: 56px 24px 80px;
   display: grid;
   gap: 56px;
+  /* This grid is stretched to the height of the glass when it is a page root,
+     and a stretched grid hands the slack to its auto rows — which would push
+     the sections apart by however much the content fell short. The slack
+     belongs at the bottom. */
+  align-content: start;
 }
 
 .home-hero {
@@ -727,7 +789,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100vh - 32px);
+  max-height: calc(var(--vh) - 32px);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
@@ -1004,7 +1066,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
    edge. */
 .wide-page .review-rail {
   top: 24px;
-  max-height: calc(100vh - 48px);
+  max-height: calc(var(--vh) - 48px);
 }
 
 /* ── the end of a step ────────────────────────────────────────────────────

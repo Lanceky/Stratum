@@ -32,10 +32,10 @@ const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
 const S = {
   page: {
-    // The topbar is 57px and only present on the consent and verdict screens.
-    // Subtracting it keeps a screen that fits from acquiring a scrollbar, which
-    // on the verdict screen would push the next step below the fold.
-    minHeight: 'calc(100vh - 57px)',
+    // No height here on purpose. The topbar is only present on the consent and
+    // verdict screens, so any constant subtracted for it is wrong on the screen
+    // that does not have one. `#root` is a viewport-tall column and this is the
+    // item that grows, so the browser measures whatever chrome is above it.
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     justifyContent: 'center', padding: 24, textAlign: 'center', gap: 4,
   },

@@ -186,7 +186,7 @@ export function Next({ eyebrow, line, to, cta, secondary }) {
  */
 export function Pending({ title, step, line }) {
   return (
-    <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
+    <main style={{ display: 'grid', placeItems: 'center', padding: 24 }}>
       <div style={{ maxWidth: 440, textAlign: 'center' }}>
         <p className="eyebrow">{step}</p>
         <h1 style={{ fontSize: 24, margin: '10px 0 12px' }}>{title}</h1>

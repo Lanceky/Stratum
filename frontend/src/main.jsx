@@ -180,7 +180,7 @@ function SystemCard({ sys }) {
 function Home() {
   const sys = useSystem()
   return (
-    <main style={{ minHeight: '100vh' }}>
+    <main>
       <div className="topbar">
         <Mark />
         <span className="eyebrow" style={{ marginLeft: 'auto' }}>
