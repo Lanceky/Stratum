@@ -10,10 +10,10 @@
 # plan limit, not a fix for a bug: the real answer is an instance that does not
 # stop, which costs money.
 #
-# Set the repository variable RENDER_HEALTH_URL to the service's /health URL
-# (Settings -> Secrets and variables -> Actions -> Variables). Without it every
-# run no-ops rather than failing, so the workflow can be merged before the
-# service exists.
+# Set the repository variable RENDER_HEALTH_URL to override the default below
+# — useful for a fork pointing at its own service. The default is checked in
+# because the address is public, and a workflow that only works after somebody
+# visits a settings page is a workflow that silently does nothing.
 
 name: keep verifier awake
 
@@ -39,20 +39,15 @@ jobs:
     steps:
       - name: Ping /health
         env:
-          URL: ${{ vars.RENDER_HEALTH_URL }}
+          URL: ${{ vars.RENDER_HEALTH_URL || 'https://stratum-verifier.onrender.com/health' }}
         run: |
-          if [ -z "$URL" ]; then
-            echo "RENDER_HEALTH_URL is not set — nothing to ping."
-            exit 0
-          fi
-
           # --max-time 120 because a cold start is the case this exists for:
           # the request that wakes the service is the slow one, and timing it
           # out would abandon the boot it just paid for.
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 120 "$URL" || echo 000)
           echo "$URL -> $code"
 
-          # A waking service can answer 502 through Render's router while the
+          # A waking service can answer 502 through the host's router while the
           # process is still binding. That still counts: the instance is up,
           # which is the only thing this job is trying to achieve. Only a
           # complete failure to connect is worth a red run.
