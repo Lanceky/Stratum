@@ -999,6 +999,14 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   padding: 40px 24px 96px;
 }
 
+/* .review-rail sticks to 0 because in the reviewer console it sits under a
+   sticky topbar. This page has none, so at 0 it would touch the viewport
+   edge. */
+.wide-page .review-rail {
+  top: 24px;
+  max-height: calc(100vh - 48px);
+}
+
 /* ── the end of a step ────────────────────────────────────────────────────
    A terminal state that names what it opened. Bordered on one side rather
    than boxed: it is the continuation of the result above it, not a separate
