@@ -129,15 +129,19 @@ function SystemCard({ sys }) {
     if (sys.waking) {
       return <IdentityCard glyph={<KeyGlyph />} eyebrow="issuer" tone="amber"
         title="waking the verifier…" status="starting"
-        chips={[{ k: 'up to a minute',
+        chips={[{
+          k: 'up to a minute',
           title: 'The verifier runs on a free instance that stops after fifteen '
-               + 'idle minutes. The first request pays for the boot; the rest '
-               + 'of the demo runs at normal speed.' }]} />
+            + 'idle minutes. The first request pays for the boot; the rest '
+            + 'of the demo runs at normal speed.'
+        }]} />
     }
     return <IdentityCard glyph={<KeyGlyph />} eyebrow="issuer" tone="red"
       title="verifier not answering" status="offline"
-      chips={[{ k: HOSTED ? 'nothing to demonstrate' : 'run make verifier',
-        title: 'Nothing here can be demonstrated until it is running.' }]} />
+      chips={[{
+        k: HOSTED ? 'nothing to demonstrate' : 'run make verifier',
+        title: 'Nothing here can be demonstrated until it is running.'
+      }]} />
   }
 
   const iss = sys.issuer ?? {}
@@ -153,25 +157,33 @@ function SystemCard({ sys }) {
       status={iss.can_sign ? 'signing' : 'unsigned'}
       stats={[
         { k: 'gates opened', v: sys.gates?.total ?? 0 },
-        { k: 'awaiting a human', v: waiting,
-          tone: waiting ? 'var(--amber-bright)' : undefined },
+        {
+          k: 'awaiting a human', v: waiting,
+          tone: waiting ? 'var(--amber-bright)' : undefined
+        },
       ]}
       rows={[
         { k: 'scheme', v: 'EIP-191' },
         { k: 'blocks', v: led.events ?? 0, mono: true },
         { k: 'head', v: middle(led.latest, 7), mono: true, title: led.latest },
-        { k: 'sensor units',
-          v: `${sys.units?.remaining ?? '—'} / ${sys.units?.ceiling ?? '—'}`, mono: true },
+        {
+          k: 'sensor units',
+          v: `${sys.units?.remaining ?? '—'} / ${sys.units?.ceiling ?? '—'}`, mono: true
+        },
       ]}
       chips={[
-        { k: sys.api_mode,
+        {
+          k: sys.api_mode,
           title: 'The sensor grant is metered and cannot be topped up, so its '
-               + 'calls run from recordings. Everything else is live.' },
-        { k: iss.can_sign ? 'demo key' : 'cannot sign',
+            + 'calls run from recordings. Everything else is live.'
+        },
+        {
+          k: iss.can_sign ? 'demo key' : 'cannot sign',
           title: iss.can_sign
             ? "Held in the server's environment. Production belongs in an HSM, "
-              + 'and the certificate says so.'
-            : 'Nothing this build produces can be verified on chain.' },
+            + 'and the certificate says so.'
+            : 'Nothing this build produces can be verified on chain.'
+        },
       ]}
     />
   )
@@ -208,11 +220,6 @@ function Home() {
         </section>
 
         <section>
-          <div className="between" style={{ marginBottom: 16 }}>
-            <p className="eyebrow" style={{ margin: 0 }}>the demo, in order</p>
-            <p className="dim small" style={{ margin: 0 }}>each step exists because the one before it failed to settle</p>
-          </div>
-
           <div className="path">
             {STEPS.map((s) => (
               <Link key={s.to} to={s.to} className="path-step">
