@@ -27,6 +27,7 @@
  */
 
 import { describe, findInLedger, LEDGER, tierFor } from './actions.js'
+import { buildCart, cartSubtotal, knownCart, releaseCheckout, searchProducts, shop } from './shopify.js'
 
 const API = import.meta.env.VITE_XANO_API_BASE || '/api'
 
@@ -50,6 +51,8 @@ export const state = {
   tier: null,
   receipt: null,
   bridge: 'checking',
+  checkoutCartId: null,
+  checkoutUrl: null,
 }
 
 function emit() {
@@ -287,24 +290,148 @@ export const TOOLS = [
   },
 
   {
+    name: 'search_products',
+    description:
+      'Search the connected Shopify store and return matching products with '
+      + 'title, price, image and variant id. Read only. Runs against the '
+      + 'Storefront API when a store is connected, and a demo catalogue '
+      + 'otherwise.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What to search the catalogue for.' },
+        limit: { type: 'number', description: 'Maximum results. Defaults to 5.' },
+      },
+      required: ['query'],
+    },
+    execute: async ({ query, limit }) => {
+      const out = await searchProducts(query, limit || 5)
+      log('search_products', { query, limit: limit || 5 }, out, 'ok')
+      return out
+    },
+  },
+
+  {
+    name: 'build_cart',
+    description:
+      'Create a Shopify cart and add lines to it, then return the line items '
+      + 'and subtotal. The cart checkout URL is deliberately withheld from '
+      + 'this response: the Storefront Cart API cannot take a payment, and the '
+      + 'checkout URL is the only route to one, so it is held in the page and '
+      + 'released to the browser only after a human settles the gate. Call '
+      + 'request_human_confirmation with the returned cart_id.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lines: {
+          type: 'array',
+          description: 'The variants to add.',
+          items: {
+            type: 'object',
+            properties: {
+              variantId: { type: 'string' },
+              quantity: { type: 'number' },
+            },
+            required: ['variantId'],
+          },
+        },
+      },
+      required: ['lines'],
+    },
+    execute: async ({ lines }) => {
+      const out = await buildCart(lines)
+      log('build_cart', { lines }, out, out.error ? 'error' : 'handoff')
+      return out
+    },
+  },
+
+  {
     name: 'request_human_confirmation',
     description:
-      'Hand the staged action to the human at this desk and open the '
-      + 'confirmation gate in the page, at the depth the risk tier requires. '
-      + 'Returns immediately with PENDING_HUMAN. The calling agent cannot '
-      + 'resolve this itself. Poll check_confirmation to see the outcome.',
+      'Hand the staged action, or a built cart, to the human at this desk and '
+      + 'open the confirmation gate in the page, at the depth the risk tier '
+      + 'requires. Returns immediately with PENDING_HUMAN. The calling agent '
+      + 'cannot resolve this itself. Poll check_confirmation to see the '
+      + 'outcome. Pass action_id for a treasury action, or cart_id for a '
+      + 'Shopify cart.',
     inputSchema: {
       type: 'object',
       properties: {
         action_id: { type: 'string' },
+        cart_id: {
+          type: 'string',
+          description: 'A cart id returned by build_cart.',
+        },
         message: {
           type: 'string',
           description: 'A short note to show the human, in your own words.',
         },
       },
-      required: ['action_id'],
     },
-    execute: async ({ action_id, message }) => {
+    execute: async ({ action_id, cart_id, message }) => {
+      if (cart_id) {
+        if (!knownCart(cart_id)) {
+          const miss = {
+            error: 'NO_SUCH_CART',
+            message: 'No cart with that id was built in this page.',
+            next_tool: 'build_cart',
+          }
+          log('request_human_confirmation', { cart_id }, miss, 'error')
+          return miss
+        }
+
+        const subtotal = cartSubtotal(cart_id) ?? 0
+        const asAction = {
+          id: cart_id,
+          kind: 'checkout',
+          payee: `${shop.store} (Shopify)`,
+          amount: subtotal,
+          currency: 'USD',
+          newPayee: true,
+          note: 'Shopify checkout. Payment is taken by Shopify, never by this page.',
+        }
+        state.staged = asAction
+        state.tier = tierFor(asAction)
+        state.checkoutCartId = cart_id
+
+        if (!state.gateId) {
+          const gate = await api('/demo/gate', { method: 'POST' })
+          if (gate.json?.id) state.gateId = gate.json.id
+        }
+
+        state.status = 'pending_human'
+        state.agentMessage = message || null
+        emit()
+        audit('agent.requested_human', { cart_id })
+
+        const out = {
+          status: 'PENDING_HUMAN',
+          cart_id,
+          risk_tier: state.tier.id,
+          awaiting: state.tier.depth,
+          gate_id: state.gateId,
+          resolvable_by_caller: false,
+          message:
+            'The gate is open in the page. Once a human here settles it, the '
+            + 'browser is sent to Shopify\'s hosted checkout, where the card '
+            + 'details are entered on Shopify\'s own domain. You will not '
+            + 'receive that URL.',
+          poll: 'check_confirmation',
+        }
+        log('request_human_confirmation', { cart_id, message: message ?? null }, out, 'handoff')
+        return out
+      }
+
+      if (!action_id) {
+        const miss = {
+          error: 'NOTHING_TO_CONFIRM',
+          message: 'Pass action_id for a treasury action, or cart_id for a cart.',
+        }
+        log('request_human_confirmation', {}, miss, 'error')
+        return miss
+      }
+
       if (!state.staged || state.staged.id !== action_id) {
         const found = LEDGER.find((a) => a.id === action_id)
         if (!found) {
@@ -486,6 +613,16 @@ export function settle({ approved, by, trusted, depth }) {
         ? `written to the audit chain for gate ${state.gateId}`
         : 'recorded locally, verifier was unreachable',
     }
+
+    // A settled cart is the only thing that can unseal the checkout URL, and
+    // it goes straight to the browser rather than into any tool result.
+    if (state.checkoutCartId) {
+      const url = releaseCheckout(state.checkoutCartId)
+      if (url) {
+        state.checkoutUrl = url
+        state.receipt.checkout = 'released to the browser, not to the agent'
+      }
+    }
   }
   emit()
 
@@ -510,5 +647,7 @@ export function reset() {
   state.status = 'idle'
   state.tier = null
   state.receipt = null
+  state.checkoutCartId = null
+  state.checkoutUrl = null
   emit()
 }

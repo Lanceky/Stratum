@@ -80,3 +80,32 @@ export async function runStandard() {
     message: 'New payee, and the bank details came in by email. Worth a look.',
   })
 }
+
+/**
+ * The commerce half of the same boundary.
+ *
+ * The agent searches a real Storefront catalogue, builds a real cart, and is
+ * handed a cart it cannot pay for. It never sees the checkout URL, so the last
+ * step is the human's whether the agent cooperates or not.
+ */
+export async function runShop(query = 'desk') {
+  const found = await tool('search_products')({ query, limit: 5 })
+  await pause(900)
+
+  const picks = (found.products || []).slice(0, 2)
+    .map((p) => ({ variantId: p.variantId, quantity: 1 }))
+  if (!picks.length) return
+
+  const cart = await tool('build_cart')({ lines: picks })
+  await pause(1000)
+  if (!cart?.cart_id) return
+
+  await tool('request_human_confirmation')({
+    cart_id: cart.cart_id,
+    message: 'Cart is built and priced. Paying for it is yours, and Shopify '
+           + 'takes the card details, not this page.',
+  })
+  await pause(500)
+
+  await tool('check_confirmation')({})
+}

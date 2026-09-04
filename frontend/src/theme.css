@@ -1353,6 +1353,89 @@ a:hover > .hover-lift h3 { color: var(--accent-bright); }
 }
 .wm-driver-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
+/* -------------------------------------------------------------- shopify */
+
+.wm-shop {
+  margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border);
+}
+
+.wm-shop-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+
+.btn-connect {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--ink);
+}
+.btn-connect:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.wm-shop-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--accent-bright);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.wm-shop-why { max-width: 520px; margin: 4px 0 0; }
+
+.wm-shop-form { display: flex; flex-direction: column; gap: 12px; }
+.wm-field { display: flex; flex-direction: column; gap: 5px; }
+.wm-field input {
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.wm-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.wm-shop-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.wm-shop-live {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.wm-shop-live > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.wm-shop-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.wm-shop-list li {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.wm-shop-list li:last-child { border-bottom: 0; }
+.wm-shop-list code { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+
+.wm-shop-cart {
+  margin-top: 12px; padding: 11px 13px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.wm-shop-cart p { margin: 0 0 6px; }
+.wm-shop-cart p:last-child { margin-bottom: 0; }
+
+.wm-checkout {
+  margin: 12px 0; padding: 12px 13px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.wm-checkout .btn { margin-bottom: 9px; text-decoration: none; }
+.wm-checkout-url {
+  display: block; font-size: 11px; color: var(--ink-3);
+  word-break: break-all; line-height: 1.45;
+}
+
 /* ------------------------------------------------------- tools and tiers */
 
 .wm-tools, .wm-tiers { margin-top: 52px; }

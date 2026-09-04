@@ -19,6 +19,8 @@ import { Link } from 'react-router-dom'
 import { Mark, Spinner } from '../ui.jsx'
 import heroArt from '../assets/stratum.png'
 import heroArtWebp from '../assets/stratum.webp'
+import ShopifyPanel from './ShopifyPanel.jsx'
+import { shop } from './shopify.js'
 import { LEDGER, TIERS, describe, tierFor } from './actions.js'
 import {
   TOOL_NAMES, registerAll, reset, settle, state, subscribe, supported, wake,
@@ -146,6 +148,24 @@ function Confirm({ s }) {
           The agent can now read the sealed receipt with <code>get_receipt</code> and
           check it has not been altered with <code>verify_record</code>.
         </p>
+        {s.checkoutUrl && (
+          <div className="wm-checkout">
+            <p className="muted small" style={{ marginTop: 0 }}>
+              The checkout URL is now released to this browser. It was never in
+              a tool response. Card details are entered on Shopify's own
+              domain, not here and not by the agent.
+            </p>
+            <a
+              className="btn btn-primary"
+              href={s.checkoutUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Continue to Shopify checkout
+            </a>
+            <code className="wm-checkout-url">{s.checkoutUrl}</code>
+          </div>
+        )}
         <Json value={s.receipt} />
         <button className="btn" onClick={reset} style={{ marginTop: 12 }}>
           Clear the desk
@@ -302,6 +322,7 @@ function Driver({ live }) {
       const d = await import('./drive.js')
       if (which === 'light') await d.runLight()
       else if (which === 'standard') await d.runStandard()
+      else if (which === 'shop') await d.runShop()
       else await d.runScript()
     } finally {
       setBusy(null)
@@ -327,6 +348,9 @@ function Driver({ live }) {
         </button>
         <button className="btn" onClick={() => run('light')} disabled={busy}>
           {busy === 'light' ? <><Spinner /> working</> : 'Renew for $12'}
+        </button>
+        <button className="btn" onClick={() => run('shop')} disabled={busy}>
+          {busy === 'shop' ? <><Spinner /> working</> : 'Shop and check out'}
         </button>
       </div>
     </div>
@@ -417,6 +441,7 @@ export default function Console() {
             </div>
             <CallLog calls={s.calls} />
             <Driver live={registered} />
+            <ShopifyPanel />
           </section>
 
           <section className="wm-pane wm-pane-human">
