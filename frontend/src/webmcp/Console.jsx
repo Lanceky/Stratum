@@ -17,6 +17,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Mark, Spinner } from '../ui.jsx'
+import heroArt from '../assets/stratum.png'
+import heroArtWebp from '../assets/stratum.webp'
 import { LEDGER, TIERS, describe, tierFor } from './actions.js'
 import {
   TOOL_NAMES, registerAll, reset, settle, state, subscribe, supported, wake,
@@ -355,6 +357,7 @@ export default function Console() {
 
       <main className="wm-page">
         <header className="wm-head">
+          <div className="wm-head-text">
           <p className="eyebrow">a webmcp treasury desk</p>
           <h1 className="wm-h1">
             An agent can do the whole task.
@@ -362,14 +365,14 @@ export default function Console() {
             It cannot do <span className="wm-hl">the last part</span>.
           </h1>
           <p className="muted wm-lede">
-            Every WebMCP example registers tools that succeed. This page
-            registers the one that refuses. Seven tools let an agent work a
-            treasury desk properly: read the ledger, price a payment, stage it,
+            STRATUM is a treasury desk that an agent and a person operate
+            together. Seven tools let the agent do the work end to end: read the
+            ledger, price a payment, check it against the agreement, stage it,
             wait for an answer, read the sealed receipt. The eighth,
-            <code> release_funds</code>, moves real money, so it is published
-            precisely so its boundary is visible rather than discovered. It
-            always refuses a non-human caller, and the refusal names the tool to
-            call instead.
+            <code> release_funds</code>, moves real money. It is registered so
+            that its boundary is visible rather than discovered, it always
+            refuses a non-human caller, and the refusal names the tool to call
+            instead.
           </p>
           <p className="muted wm-lede" style={{ marginTop: 14 }}>
             The result is a task neither party could finish alone. The agent
@@ -392,6 +395,18 @@ export default function Console() {
               </span>
             )}
           </div>
+          </div>
+
+          <figure className="wm-hero-art">
+            <picture>
+              <source srcSet={heroArtWebp} type="image/webp" />
+              <img src={heroArt} alt="" width="1280" height="853" loading="eager" decoding="async" />
+            </picture>
+            <figcaption className="muted small">
+              One side confirms. One side executes. The line between them is
+              published, not hidden.
+            </figcaption>
+          </figure>
         </header>
 
         <div className="wm-split">

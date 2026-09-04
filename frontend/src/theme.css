@@ -1197,10 +1197,39 @@ a:hover > .hover-lift h3 { color: var(--accent-bright); }
 
 .wm-page { max-width: 1240px; margin: 0 auto; padding: 26px 22px 72px; }
 
-.wm-head { max-width: 760px; margin-bottom: 28px; }
+.wm-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+.wm-head-text { min-width: 0; max-width: 760px; }
 .wm-h1 { font-size: 40px; line-height: 1.12; margin: 8px 0 16px; letter-spacing: -0.034em; font-weight: 500; }
 .wm-hl { color: var(--accent-bright); }
 .wm-lede { max-width: 640px; font-size: 15px; line-height: 1.65; }
+
+.wm-hero-art { display: none; margin: 0; min-width: 0; }
+.wm-hero-art picture { display: block; }
+.wm-hero-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background-color: #000;
+}
+.wm-hero-art figcaption {
+  margin-top: 10px;
+  padding-left: 2px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+@media (min-width: 1040px) {
+  .wm-head { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 34px; }
+  .wm-hero-art { display: block; }
+}
 
 .wm-status { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
 

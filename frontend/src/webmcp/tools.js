@@ -1,18 +1,18 @@
 /**
  * STRATUM's WebMCP tool surface.
  *
- * Every WebMCP example published so far registers tools that succeed. Search
- * the catalogue, add to the cart, book the table. That is the easy half of an
- * agent-native page, and it quietly assumes the interesting question is what an
- * agent is able to do.
+ * Agents are being handed real sessions on real accounts. Searching a
+ * catalogue, filling a cart and booking a table are exactly what a tool
+ * surface is for, and they are far more reliable through registered tools than
+ * through a model guessing at a UI.
  *
- * The harder half, and the one this page is about, is what happens at the
- * moment an action stops being reversible. Today a web app has two options and
- * both are bad. It can leave the capability in the page, in which case anything
- * holding the session can fire it. Or it can hide the capability, in which case
- * the agent cannot see the boundary, treats the failure as a bug, and starts
- * looking for a way around it. Hidden boundaries are what produce retries,
- * scraped forms and synthetic clicks.
+ * This page is about the step after those: the moment an action stops being
+ * reversible. There a web app has two options and both cost something real. It
+ * can leave the capability in the page, in which case anything holding the
+ * session can fire it. Or it can hide the capability, in which case the agent
+ * cannot see the boundary, treats the failure as a bug, and starts looking for
+ * a way around it. Hidden boundaries are what produce retries, scraped forms
+ * and synthetic clicks.
  *
  * So `release_funds` below is registered. It is fully described, it appears in
  * the agent's tool list, and it always refuses. The refusal is a normal return
