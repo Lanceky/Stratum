@@ -57,7 +57,7 @@ the same structured channel it uses to teach it everything else.
 
 ## How WebMCP is implemented
 
-All eight tools are registered in
+All ten tools are registered in
 [`frontend/src/webmcp/tools.js`](./frontend/src/webmcp/tools.js) when the desk
 mounts, and unregistered when it unmounts, because a treasury desk that is no
 longer on screen should not still be offering itself to an agent.
@@ -88,11 +88,36 @@ document.modelContext.registerTool({
 | `list_pending_actions` | Read the desk. Returns each item with the risk tier this site assigns it. |
 | `inspect_action` | One action in full, including why it sits in its tier. |
 | `stage_action` | Validate, price, and put an action in front of the human. Moves nothing. |
+| `search_products` | Search the connected Shopify store through the Storefront API. Read only. |
+| `build_cart` | Create and price a real Shopify cart. **The checkout URL is withheld.** |
 | `release_funds` | **Registered and always refused.** The visible boundary. |
 | `request_human_confirmation` | The handoff. Opens the gate in-page, returns `PENDING_HUMAN`. |
 | `check_confirmation` | Poll for the outcome. The agent may watch and cannot resolve. |
 | `get_receipt` | The sealed record: who confirmed, at what depth, when. |
 | `verify_record` | Recompute the audit chain and report whether it was altered. |
+
+## The same boundary on somebody else's infrastructure
+
+The Shopify half is in the project because it shows the pattern holding where
+we do not control the backend, and where the boundary is structural rather than
+something this app merely asserts.
+
+The Storefront Cart API has no payment capability in it. `cartCreate` and
+`cartLinesAdd` build and price a cart and neither of them can charge a card.
+The only route to an actual payment is `cart.checkoutUrl`, a hosted page on
+Shopify's own domain. So an agent holding a cart is not being trusted to behave
+itself: it is holding an object that cannot take money.
+
+`build_cart` returns the line items and the subtotal, and withholds that one
+field. The URL is kept in a module-private `Map` keyed by cart id in
+[`shopify.js`](./frontend/src/webmcp/shopify.js) that no registered `execute`
+function reads from, and it is released to the browser only after a human
+settles the gate. The card details are then entered on Shopify's page, never in
+this app and never by the model.
+
+A Storefront access token is public by design, which is why the page can prompt
+for one safely. Leave it blank and a five item demo catalogue drives the same
+flow with no store and no network.
 
 ## Proportionate friction
 

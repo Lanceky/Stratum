@@ -390,9 +390,10 @@ export default function Console() {
           </h1>
           <p className="muted wm-lede">
             STRATUM is a treasury desk that an agent and a person operate
-            together. Seven tools let the agent do the work end to end: read the
-            ledger, price a payment, check it against the agreement, stage it,
-            wait for an answer, read the sealed receipt. The eighth,
+            together. Nine tools let the agent do the work end to end: read the
+            ledger, price a payment, check it against the agreement, search a
+            Shopify catalogue, build a priced cart, stage it, wait for an
+            answer, read the sealed receipt. The tenth,
             <code> release_funds</code>, moves real money. It is registered so
             that its boundary is visible rather than discovered, it always
             refuses a non-human caller, and the refusal names the tool to call
@@ -456,7 +457,7 @@ export default function Console() {
         <section className="wm-tools">
           <h2>The tool surface</h2>
           <p className="muted small" style={{ maxWidth: 640 }}>
-            All eight are registered with
+            All ten are registered with
             {' '}<code>document.modelContext.registerTool</code> when this page
             mounts, and unregistered when it unmounts, because a treasury desk
             that is no longer on screen should not still be offering itself to
