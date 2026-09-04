@@ -24,13 +24,12 @@ ordinary browser: it calls the identical `execute` functions.
 
 ## The problem this is about
 
-Every published WebMCP example registers tools that succeed. Search the
-catalogue, add to the cart, book the table. That is the easy half of an
-agent-native page, and it quietly assumes the interesting question is what an
-agent is *able* to do.
+Agents are being handed real sessions on real accounts. Search the catalogue,
+add to the cart, book the table: a tool surface makes all of that faster and
+more reliable than guessing at a UI, and that is the point of the standard.
 
-The harder half is the moment an action becomes irreversible. Today a web app
-has two options and both are bad:
+STRATUM is about the step after those. The moment an action becomes
+irreversible, a web app has two options today and both cost something real:
 
 1. **Leave the capability in the page.** Anything holding the session can fire
    it, including an agent that has misread the task.

@@ -212,9 +212,10 @@ function Home() {
               <span style={{ color: 'var(--accent-bright)' }}>sign for it</span>.
             </h1>
             <p className="muted" style={{ maxWidth: 520, marginTop: 18, fontSize: 15 }}>
-              Every authorisation is written to a hash chain, one block per
-              event. An agent reaching for a signature is refused — and the
-              refusal is recorded, because that is what an auditor came for.
+              This is the evidence layer under the WebMCP desk. Every
+              authorisation is written to a hash chain, one block per event. An
+              agent reaching for a signature is refused, and the refusal is
+              recorded too, because that is what an auditor came for.
             </p>
           </div>
           <SystemCard sys={sys} />
