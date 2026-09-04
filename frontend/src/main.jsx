@@ -12,6 +12,7 @@ import Verify from './verify/Verify.jsx'
 import Dashboard from './dashboard/Dashboard.jsx'
 import Claim from './claim/Claim.jsx'
 import Terms from './terms/Terms.jsx'
+import Console from './webmcp/Console.jsx'
 
 const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 
@@ -318,7 +319,9 @@ createRoot(document.getElementById('root')).render(
   <BrowserRouter>
     <ScrollToTop />
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<Console />} />
+      <Route path="/desk" element={<Console />} />
+      <Route path="/how" element={<Home />} />
       <Route path="/agent" element={<Agent />} />
       <Route path="/gate/:gateId" element={<Gate />} />
       <Route path="/review" element={<Review />} />

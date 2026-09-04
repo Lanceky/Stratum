@@ -1157,3 +1157,162 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   .card { padding: 15px; }
   .home-h1 { font-size: 30px; }
 }
+
+/* ==================================================================== webmcp
+
+   The treasury desk. Two panes: what the agent is doing, and what only the
+   person at the keyboard can do. They sit side by side because the argument of
+   the page is that both are happening at once, and a layout that stacked them
+   would be telling a story of handoff rather than collaboration.
+   ==================================================================== */
+
+.wm-page { max-width: 1240px; margin: 0 auto; padding: 26px 22px 72px; }
+
+.wm-head { max-width: 760px; margin-bottom: 28px; }
+.wm-h1 { font-size: 38px; line-height: 1.15; margin: 8px 0 16px; letter-spacing: -0.02em; }
+.wm-hl { color: var(--indigo-bright); }
+.wm-lede { max-width: 640px; font-size: 15px; line-height: 1.65; }
+
+.wm-status { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
+
+.wm-pill {
+  display: inline-block; padding: 4px 10px; border-radius: 999px;
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.02em;
+  border: 1px solid var(--border-strong); color: var(--ink-2);
+  background: rgba(255,255,255,0.03);
+}
+.wm-pill.wm-ok { background: var(--green-dim); border-color: rgba(63,185,80,0.4); color: var(--green); }
+.wm-pill.wm-waiting { background: var(--amber-dim); border-color: rgba(210,153,34,0.4); color: var(--amber-bright); }
+.wm-pill.wm-tier-light { background: var(--green-dim); border-color: rgba(63,185,80,0.4); color: var(--green); }
+.wm-pill.wm-tier-standard { background: var(--amber-dim); border-color: rgba(210,153,34,0.4); color: var(--amber-bright); }
+.wm-pill.wm-tier-critical { background: var(--red-dim); border-color: rgba(248,81,73,0.4); color: var(--red); }
+
+.wm-split { display: grid; grid-template-columns: 1fr 420px; gap: 20px; align-items: start; }
+
+.wm-pane {
+  border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--surface); padding: 18px; min-height: 340px;
+}
+.wm-pane-human { border-color: var(--border-indigo); background: var(--bg-elevated); position: sticky; top: 18px; }
+.wm-pane-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 14px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.wm-pane-head h2 { font-size: 15px; margin: 0; letter-spacing: -0.01em; }
+
+.wm-empty {
+  border: 1px dashed var(--border-strong); border-radius: var(--r-sm);
+  padding: 22px; text-align: center;
+}
+
+/* ------------------------------------------------------------- call log */
+
+.wm-call {
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface-2); overflow: hidden;
+}
+.wm-call > summary {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  cursor: pointer; list-style: none; font-size: 13px;
+}
+.wm-call > summary::-webkit-details-marker { display: none; }
+.wm-call code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+.wm-n { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.wm-at { margin-left: auto; font-family: var(--mono); }
+.wm-call-body { padding: 0 12px 12px; border-top: 1px solid var(--border); }
+
+.wm-call.wm-refused { border-color: rgba(248,81,73,0.4); }
+.wm-call.wm-handoff { border-color: var(--border-indigo); }
+
+.wm-verdict {
+  font-family: var(--mono); font-size: 10.5px; padding: 2px 7px;
+  border-radius: 999px; border: 1px solid var(--border-strong); color: var(--ink-2);
+}
+.wm-verdict.wm-ok { color: var(--green); border-color: rgba(63,185,80,0.4); }
+.wm-verdict.wm-err { color: var(--amber-bright); border-color: rgba(210,153,34,0.4); }
+.wm-verdict.wm-refused { color: var(--red); border-color: rgba(248,81,73,0.45); background: var(--red-dim); }
+.wm-verdict.wm-handoff { color: var(--indigo-bright); border-color: var(--border-indigo); background: var(--indigo-dim); }
+.wm-verdict.wm-waiting { color: var(--ink-3); }
+
+.wm-json {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 10px 12px; margin: 0; overflow-x: auto; color: var(--ink-2);
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* -------------------------------------------------------------- the gate */
+
+.wm-gate { }
+.wm-tier-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wm-depth {
+  font-size: 13px; color: var(--ink); background: var(--indigo-dim);
+  border-left: 2px solid var(--indigo); padding: 10px 12px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0; margin: 16px 0;
+}
+.wm-depth-sm { font-size: 12.5px; color: var(--ink); margin: 10px 0 6px; line-height: 1.5; }
+.wm-await { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
+
+.wm-agent-note {
+  font-size: 13px; line-height: 1.6; color: var(--ink-2);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 10px 12px; margin: 14px 0 0; background: var(--surface-2);
+}
+
+.wm-label {
+  display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3); margin: 14px 0 6px;
+}
+.wm-input {
+  width: 100%; padding: 9px 11px; font-size: 14px; font-family: var(--mono);
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+}
+.wm-input:focus { outline: 2px solid var(--indigo-bright); outline-offset: 1px; }
+
+.wm-critical {
+  border: 1px solid rgba(248,81,73,0.3); background: var(--red-dim);
+  border-radius: var(--r-sm); padding: 12px; margin-top: 16px;
+}
+
+.wm-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+.wm-settled { }
+.wm-settled.wm-ok { border-left: 2px solid var(--green); padding-left: 14px; }
+.wm-settled.wm-refused { border-left: 2px solid var(--red); padding-left: 14px; }
+
+/* --------------------------------------------------------- local driver */
+
+.wm-driver {
+  margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border);
+}
+.wm-driver-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* ------------------------------------------------------- tools and tiers */
+
+.wm-tools, .wm-tiers { margin-top: 52px; }
+.wm-tools h2, .wm-tiers h2 { font-size: 19px; margin: 0 0 8px; letter-spacing: -0.01em; }
+
+.wm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 18px; }
+.wm-grid-3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+.wm-tool {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 11px 13px; background: var(--surface); font-size: 13px;
+}
+.wm-tool code { font-family: var(--mono); font-size: 12.5px; }
+.wm-tool.wm-refused { border-color: rgba(248,81,73,0.4); background: rgba(248,81,73,0.05); }
+
+.wm-tier-card { border: 1px solid var(--border); border-radius: var(--r); padding: 16px; background: var(--surface); }
+.wm-tier-card.wm-tier-light { border-color: rgba(63,185,80,0.3); }
+.wm-tier-card.wm-tier-standard { border-color: rgba(210,153,34,0.3); }
+.wm-tier-card.wm-tier-critical { border-color: rgba(248,81,73,0.3); }
+.wm-eg { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-bottom: 0; }
+
+@media (max-width: 1080px) {
+  .wm-split { grid-template-columns: 1fr; }
+  .wm-pane-human { position: static; }
+  .wm-h1 { font-size: 30px; }
+}
