@@ -41,7 +41,7 @@ const S = {
   },
   video: {
     width: '100%', maxWidth: 420, borderRadius: 'var(--r-lg)', background: '#000',
-    border: '1px solid var(--border-indigo)',
+    border: '1px solid var(--border-accent)',
     boxShadow: '0 0 0 1px rgba(99,102,241,0.12), 0 12px 48px rgba(99,102,241,0.18)',
     transform: 'scaleX(-1)', // mirror, so it feels like a mirror
   },

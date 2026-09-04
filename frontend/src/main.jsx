@@ -154,7 +154,7 @@ function SystemCard({ sys }) {
       glyph={<KeyGlyph />}
       eyebrow="issuer"
       title={iss.can_sign ? middle(iss.address, 10) : 'no signing key'}
-      tone={iss.can_sign ? 'indigo' : 'amber'}
+      tone={iss.can_sign ? 'accent' : 'amber'}
       status={iss.can_sign ? 'signing' : 'unsigned'}
       stats={[
         { k: 'gates opened', v: sys.gates?.total ?? 0 },
@@ -209,7 +209,7 @@ function Home() {
               An AI agent can do the work.
               <br />
               Only a verified human can{' '}
-              <span style={{ color: 'var(--indigo-bright)' }}>sign for it</span>.
+              <span style={{ color: 'var(--accent-bright)' }}>sign for it</span>.
             </h1>
             <p className="muted" style={{ maxWidth: 520, marginTop: 18, fontSize: 15 }}>
               Every authorisation is written to a hash chain, one block per

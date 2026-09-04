@@ -54,7 +54,7 @@ export function Mark() {
 export function Hash({ value, chars = 12 }) {
   if (!value) return null
   return (
-    <code className="mono" style={{ color: 'var(--indigo-bright)' }} title={value}>
+    <code className="mono" style={{ color: 'var(--accent-bright)' }} title={value}>
       {String(value).slice(0, chars)}…
     </code>
   )
@@ -103,7 +103,7 @@ export function Chain({ events = [], brokenAt = null }) {
               </div>
             )}
             {p.actor && (
-              <div className="mono" style={{ fontSize: 10, color: p.actor === 'human' ? 'var(--indigo-bright)' : 'var(--ink-3)' }}>
+              <div className="mono" style={{ fontSize: 10, color: p.actor === 'human' ? 'var(--accent-bright)' : 'var(--ink-3)' }}>
                 {p.actor}
               </div>
             )}
@@ -224,10 +224,10 @@ export function Pending({ title, step, line }) {
  * which is the wrong place for the limits of the thing. As labels they are
  * scanned in the same pass as the status.
  */
-const CARD_BADGE = { indigo: 'badge-signed', amber: 'badge-review', red: 'badge-fail' }
+const CARD_BADGE = { accent: 'badge-signed', amber: 'badge-review', red: 'badge-fail' }
 
 export function IdentityCard({
-  glyph, eyebrow, title, status, tone = 'indigo', stats = [], rows = [],
+  glyph, eyebrow, title, status, tone = 'accent', stats = [], rows = [],
   chips = [], children,
 }) {
   return (

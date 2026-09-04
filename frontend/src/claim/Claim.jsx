@@ -384,7 +384,7 @@ export default function Claim() {
                         and compares the result against the issuer.</>}
                   </p>
                   {/* The same card the landing page uses for the issuer, now
-                      holding what was actually issued. Amber, not indigo, when
+                      holding what was actually issued. Amber, not green, when
                       the verdict is a refusal: it is still a real credential a
                       contract can hold, and colouring it like an approval
                       would make the one field that matters the easiest to
@@ -394,7 +394,7 @@ export default function Claim() {
                     eyebrow={`claim · ${context}`}
                     title={middle(signed.body.claim.address, 10)}
                     status={signed.settled === 'FAIL' ? 'refused' : 'authorised'}
-                    tone={signed.settled === 'FAIL' ? 'red' : 'indigo'}
+                    tone={signed.settled === 'FAIL' ? 'red' : 'accent'}
                     rows={[
                       { k: 'verdict', v: <Badge value={signed.body.claim.verdict} /> },
                       { k: 'nullifier', v: middle(signed.body.claim.nullifier, 8),

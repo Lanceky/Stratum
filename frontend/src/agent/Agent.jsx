@@ -22,7 +22,7 @@ const API = import.meta.env.VITE_XANO_API_BASE ?? '/api'
 const S = {
   call: { borderLeft: '2px solid var(--border)', paddingLeft: 16 },
   refused: { borderLeft: '2px solid var(--red)' },
-  allowed: { borderLeft: '2px solid var(--indigo-bright)' },
+  allowed: { borderLeft: '2px solid var(--accent-bright)' },
   body: { color: 'var(--ink-3)', fontSize: 12, paddingLeft: 18, marginTop: 10 },
 }
 

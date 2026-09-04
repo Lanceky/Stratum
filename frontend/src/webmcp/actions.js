@@ -118,6 +118,15 @@ export function findInLedger(query) {
   return hit.length ? hit : LEDGER
 }
 
+export function money(value, currency = 'USD') {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
 export function describe(action) {
   const tier = tierFor(action)
   return {
@@ -126,8 +135,8 @@ export function describe(action) {
     payee: action.payee,
     memo: action.memo,
     amount: action.binding
-      ? 'no payment, a 24 month commitment'
-      : `${action.currency} ${action.value.toLocaleString()}`,
+      ? 'No money moves. A 24 month commitment.'
+      : money(action.value, action.currency),
     value: action.value,
     new_payee: action.new_payee,
     risk_tier: tier.id,

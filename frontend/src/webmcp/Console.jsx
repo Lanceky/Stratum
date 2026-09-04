@@ -312,18 +312,19 @@ function Driver({ live }) {
         {live ? 'no agent on hand?' : 'not in a WebMCP browser?'}
       </p>
       <p className="muted small">
-        These run the identical <code>execute</code> functions a real agent
-        calls. Same code path, started by a button instead of a model.
+        Each button runs the identical <code>execute</code> functions a real
+        agent calls, in the same order. Same code path, same refusal, started by
+        a click instead of a model.
       </p>
       <div className="wm-driver-row">
         <button className="btn btn-primary" onClick={() => run('critical')} disabled={busy}>
-          {busy === 'critical' ? <><Spinner /> working</> : 'A 41,800 wire'}
+          {busy === 'critical' ? <><Spinner /> working</> : 'Wire $41,800'}
         </button>
         <button className="btn" onClick={() => run('standard')} disabled={busy}>
-          {busy === 'standard' ? <><Spinner /> working</> : 'A new payee'}
+          {busy === 'standard' ? <><Spinner /> working</> : 'Pay a new payee'}
         </button>
         <button className="btn" onClick={() => run('light')} disabled={busy}>
-          {busy === 'light' ? <><Spinner /> working</> : 'A 12 renewal'}
+          {busy === 'light' ? <><Spinner /> working</> : 'Renew for $12'}
         </button>
       </div>
     </div>
@@ -354,19 +355,26 @@ export default function Console() {
 
       <main className="wm-page">
         <header className="wm-head">
-          <p className="eyebrow">the agent-native desk</p>
+          <p className="eyebrow">a webmcp treasury desk</p>
           <h1 className="wm-h1">
-            The agent can do the whole task.
+            An agent can do the whole task.
             <br />
             It cannot do <span className="wm-hl">the last part</span>.
           </h1>
           <p className="muted wm-lede">
-            This page registers eight WebMCP tools. Seven of them let an agent
-            work the treasury desk properly: read the ledger, price a payment,
-            stage it, poll for an answer, read the sealed receipt. The eighth,
-            <code> release_funds</code>, is published so its boundary is visible
-            rather than discovered, and it always refuses. It returns the reason
-            and the name of the tool to call instead.
+            Every WebMCP example registers tools that succeed. This page
+            registers the one that refuses. Seven tools let an agent work a
+            treasury desk properly: read the ledger, price a payment, stage it,
+            wait for an answer, read the sealed receipt. The eighth,
+            <code> release_funds</code>, moves real money, so it is published
+            precisely so its boundary is visible rather than discovered. It
+            always refuses a non-human caller, and the refusal names the tool to
+            call instead.
+          </p>
+          <p className="muted wm-lede" style={{ marginTop: 14 }}>
+            The result is a task neither party could finish alone. The agent
+            does the work; you authorise the part that cannot be undone. Both
+            happen in this one tab, at the same time.
           </p>
 
           <div className="wm-status">
@@ -378,8 +386,9 @@ export default function Console() {
             </span>
             {!registered && (
               <span className="muted small">
-                Open in ChatGPT's in-app browser, or Chrome with
-                {' '}<code>chrome://flags/#enable-webmcp-testing</code>.
+                For live tool calls, open in ChatGPT's in-app browser, or Chrome
+                with <code>chrome://flags/#enable-webmcp-testing</code>. The desk
+                below works either way.
               </span>
             )}
           </div>
@@ -389,7 +398,7 @@ export default function Console() {
           <section className="wm-pane">
             <div className="wm-pane-head">
               <h2>What the agent is doing</h2>
-              <span className="muted small">{s.calls.length} tool calls</span>
+              <span className="muted small">{s.calls.length} WebMCP tool calls</span>
             </div>
             <CallLog calls={s.calls} />
             <Driver live={registered} />
@@ -407,10 +416,12 @@ export default function Console() {
         <section className="wm-tools">
           <h2>The tool surface</h2>
           <p className="muted small" style={{ maxWidth: 640 }}>
-            Registered with <code>document.modelContext.registerTool</code> when
-            this page mounts, and unregistered when it unmounts, because a
-            treasury desk that is no longer on screen should not still be
-            offering itself to an agent.
+            All eight are registered with
+            {' '}<code>document.modelContext.registerTool</code> when this page
+            mounts, and unregistered when it unmounts, because a treasury desk
+            that is no longer on screen should not still be offering itself to
+            an agent. Read only tools are annotated as such, so an agent knows
+            which calls are free to make.
           </p>
           <div className="wm-grid">
             {TOOL_NAMES.map((n) => (

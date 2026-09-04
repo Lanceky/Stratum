@@ -1,58 +1,79 @@
 /**
  * STRATUM design tokens.
  *
- * GitHub's dark canvas, Vercel's geometry, indigo for anything a human is
- * being asked to trust. The palette is deliberately narrow: this is a console
- * where someone authorises money moving, so colour carries meaning rather than
- * decoration. Indigo means "the system is asking you", amber means "unsettled",
- * red means "refused or broken", green means "settled".
+ * Monochrome, high contrast, and deliberately quiet. This is a console where
+ * someone authorises money moving, so colour is spent only where it carries
+ * meaning: white is the system asking you to act, amber is unsettled, red is
+ * refused, green is settled. Everything else is black, white, and the space
+ * between them.
+ *
+ * The reason for the restraint is not taste. A page that colours its chrome has
+ * nothing left to colour a refusal with. Keeping the canvas neutral is what
+ * lets a single red block in a call log carry the weight of the whole argument.
  *
  * The blocks are not an aesthetic borrowed from crypto. STRATUM's audit trail
- * is a hash chain — each record covers the one before it — so drawing it as
+ * is a hash chain, each record covering the one before it, so drawing it as
  * linked blocks is the most honest possible rendering of the data structure.
  */
 
 :root {
-  /* Canvas — GitHub dark, one shade deeper for the page itself. */
-  --bg: #0a0c10;
-  --bg-elevated: #0d1117;
-  --surface: #12161f;
-  --surface-2: #161b22;
-  --surface-3: #1c2230;
+  /* Canvas. True black, with elevation carried by hairlines rather than fills,
+     because a surface that is lighter than the page reads as a panel and a
+     surface separated by a hairline reads as a document. */
+  --bg: #000000;
+  --bg-elevated: #08080a;
+  --surface: #0d0d0f;
+  --surface-2: #121215;
+  --surface-3: #18181c;
 
-  --border: #232936;
-  --border-strong: #30363d;
-  --border-indigo: rgba(99, 102, 241, 0.35);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.17);
+  --border-accent: rgba(0, 217, 122, 0.42);
 
-  --ink: #e6edf3;
-  --ink-2: #9aa6b8;
-  --ink-3: #6b7689;
+  --ink: #f2f2f3;
+  --ink-2: #9a9aa2;
+  --ink-3: #66666e;
 
-  /* Indigo — the accent, and the only colour used for affirmative action. */
-  --indigo: #6366f1;
-  --indigo-bright: #818cf8;
-  --indigo-dim: rgba(99, 102, 241, 0.14);
-  --indigo-line: rgba(99, 102, 241, 0.28);
-  --indigo-glow: rgba(99, 102, 241, 0.45);
+  /* The page is black and white. Green is the single accent, and it is spent
+     only on the affirmative: a primary action, a settled state, a verified
+     record. Nothing else on the page is coloured, so the eye goes to the one
+     thing that is. */
+  --accent: #00d97a;
+  --accent-bright: #4ef0a6;
+  --accent-soft: #a7f3cf;
+  --accent-deep: #018a4d;
+  --accent-ink: #001b0f;
+  --accent-dim: rgba(0, 217, 122, 0.10);
+  --accent-line: rgba(0, 217, 122, 0.28);
+  --accent-glow: rgba(0, 217, 122, 0.30);
 
-  --green: #3fb950;
-  --green-dim: rgba(63, 185, 80, 0.13);
-  --amber: #d29922;
-  --amber-bright: #e3b341;
-  --amber-dim: rgba(210, 153, 34, 0.13);
-  --red: #f85149;
-  --red-dim: rgba(248, 81, 73, 0.13);
+  --green: #00d97a;
+  --green-bright: #4ef0a6;
+  --green-dim: rgba(0, 217, 122, 0.12);
+
+  /* The dot field. A single radial stop tiled small enough to read as texture
+     rather than pattern, laid under card surfaces so a panel has a grain to
+     it without needing a fill that would lighten the page. */
+  --dots: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.055) 1px, transparent 0);
+  --dots-accent: radial-gradient(circle at 1px 1px, rgba(0, 217, 122, 0.16) 1px, transparent 0);
+  --dots-size: 13px 13px;
+  --amber: #e0b341;
+  --amber-bright: #f0c75e;
+  --amber-dim: rgba(224, 179, 65, 0.12);
+  --red: #ff5f56;
+  --red-dim: rgba(255, 95, 86, 0.12);
 
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
 
-  --r-sm: 6px;
-  --r: 10px;
-  --r-lg: 14px;
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 18px;
+  --r-pill: 999px;
 
   --pad: 16px;
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
-            0 8px 24px rgba(1, 4, 9, 0.6);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
+            0 12px 40px rgba(0, 0, 0, 0.8);
 
   /* The height of the glass, not the height of the window.
      `100vh` is the *large* viewport — the size the page would be if the mobile
@@ -85,7 +106,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* A faint indigo grid, so the surface reads as engineered rather than blank.
+/* A faint grid, so the surface reads as engineered rather than blank.
    Fixed, so it does not travel with scroll and turn into visual noise. */
 body::before {
   content: '';
@@ -94,9 +115,9 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(1100px 520px at 12% -10%, rgba(99, 102, 241, 0.10), transparent 65%),
-    linear-gradient(rgba(99, 102, 241, 0.045) 1px, transparent 1px) 0 0 / 100% 44px,
-    linear-gradient(90deg, rgba(99, 102, 241, 0.045) 1px, transparent 1px) 0 0 / 44px 100%;
+    radial-gradient(1100px 520px at 12% -10%, rgba(255, 255, 255, 0.055), transparent 65%),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 100% 44px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 44px 100%;
   mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.35) 60%, transparent 100%);
 }
 
@@ -144,15 +165,15 @@ body::before {
    than letting a tall page compress it. */
 #root > * { width: 100%; min-width: 0; flex-shrink: 0; }
 
-::selection { background: var(--indigo-glow); color: #fff; }
+::selection { background: var(--accent-glow); color: #fff; }
 
 :focus-visible {
-  outline: 2px solid var(--indigo-bright);
+  outline: 2px solid var(--accent-bright);
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
 
-a { color: var(--indigo-bright); text-decoration: none; }
+a { color: var(--accent-bright); text-decoration: none; }
 
 /* Underline is for links inside prose, where a colour shift alone is easy to
    miss. A card that is entirely a link is already obviously clickable, and
@@ -164,7 +185,7 @@ a:hover { text-decoration: underline; }
 a:hover:where(.path-step, .unbuilt-item, .btn, .queue-item, .tile),
 a:hover:where(:has(.hover-lift)) { text-decoration: none; }
 
-h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.022em; }
 
 /* ── type ─────────────────────────────────────────────────────────────── */
 
@@ -184,7 +205,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
 /* ── surfaces ─────────────────────────────────────────────────────────── */
 
 .card {
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  background-image: var(--dots), linear-gradient(180deg, var(--surface-2), var(--surface));
+  background-size: var(--dots-size), auto;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   padding: 18px;
@@ -235,10 +257,10 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
   box-shadow: 0 0 8px currentColor;
 }
 
-.badge-pass    { background: var(--green-dim); border-color: rgba(63,185,80,0.32);  color: var(--green); }
-.badge-review  { background: var(--amber-dim); border-color: rgba(210,153,34,0.34); color: var(--amber-bright); }
-.badge-fail    { background: var(--red-dim);   border-color: rgba(248,81,73,0.32);  color: var(--red); }
-.badge-signed  { background: var(--indigo-dim); border-color: var(--border-indigo); color: var(--indigo-bright); }
+.badge-pass    { background: var(--green-dim); border-color: var(--accent-line);  color: var(--green); }
+.badge-review  { background: var(--amber-dim); border-color: rgba(224, 179, 65, 0.34); color: var(--amber-bright); }
+.badge-fail    { background: var(--red-dim);   border-color: rgba(255, 95, 86, 0.32);  color: var(--red); }
+.badge-signed  { background: var(--accent-dim); border-color: var(--border-accent); color: var(--accent-bright); }
 .badge-idle    { background: rgba(255,255,255,0.04); border-color: var(--border-strong); color: var(--ink-2); }
 .badge-absent  { background: rgba(255,255,255,0.03); border-color: var(--border-strong); color: var(--ink-2); }
 .badge-absent::before { box-shadow: none; opacity: 0.5; }
@@ -250,38 +272,44 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
-  border-radius: var(--r);
+  padding: 10px 20px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--border-strong);
-  background: var(--surface-3);
+  background: transparent;
   color: var(--ink);
   font: inherit;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: -0.005em;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease,
-              transform 80ms ease, box-shadow 160ms ease;
+  transition: background 140ms ease, border-color 140ms ease,
+              transform 80ms ease, opacity 140ms ease;
 }
 
-.btn:hover:not(:disabled) { background: #222a3a; border-color: #3d4657; }
+.btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-accent);
+}
 .btn:active:not(:disabled) { transform: translateY(1px); }
 
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled { opacity: 0.32; cursor: not-allowed; }
 
+/* The affirmative action is the only filled element on the page, and green is
+   the only colour, so the thing a person is being asked to authorise cannot be
+   confused with the chrome around it. */
 .btn-primary {
-  background: linear-gradient(180deg, var(--indigo-bright), var(--indigo));
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 0 0 1px var(--indigo-line), 0 6px 18px rgba(99, 102, 241, 0.28);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #93a0ff, #6d70f5);
-  border-color: transparent;
-  box-shadow: 0 0 0 1px var(--indigo-glow), 0 8px 26px rgba(99, 102, 241, 0.42);
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
 }
 
-.btn-danger { border-color: rgba(248, 81, 73, 0.42); color: #ff9d95; background: var(--red-dim); }
-.btn-danger:hover:not(:disabled) { background: rgba(248, 81, 73, 0.2); border-color: var(--red); }
+.btn-danger { border-color: rgba(255, 95, 86, 0.42); color: #ff9d95; background: transparent; }
+.btn-danger:hover:not(:disabled) { background: var(--red-dim); border-color: var(--red); }
 
 /* ── inputs ───────────────────────────────────────────────────────────── */
 
@@ -299,8 +327,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
 .input::placeholder { color: var(--ink-3); }
 .input:focus {
   outline: none;
-  border-color: var(--indigo);
-  box-shadow: 0 0 0 3px var(--indigo-dim);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 /* ── the chain, drawn as blocks ───────────────────────────────────────── */
@@ -350,19 +378,19 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
   top: 50%;
   width: 19px;
   height: 1px;
-  background: linear-gradient(90deg, var(--indigo-line), var(--indigo));
+  background: linear-gradient(90deg, var(--accent-line), var(--accent));
 }
 
-.block-ok     { border-color: var(--border-indigo); }
-.block-refuse { border-color: rgba(248, 81, 73, 0.5); background: linear-gradient(180deg, rgba(248,81,73,0.1), var(--surface)); }
-.block-human  { border-color: rgba(99, 102, 241, 0.6); box-shadow: 0 0 0 1px var(--indigo-dim), 0 0 20px rgba(99,102,241,0.16); }
+.block-ok     { border-color: var(--border-accent); }
+.block-refuse { border-color: rgba(255, 95, 86, 0.5); background: linear-gradient(180deg, rgba(255, 95, 86, 0.1), var(--surface)); }
+.block-human  { border-color: rgba(255, 255, 255, 0.33); box-shadow: 0 0 0 1px var(--accent-dim), 0 0 20px rgba(255, 255, 255, 0.088); }
 
 .block-broken { border-color: var(--red); }
 .block-broken + .block::before { background: repeating-linear-gradient(90deg, var(--red) 0 3px, transparent 3px 6px); }
 
 .block-index { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); letter-spacing: 0.08em; }
 .block-type  { font-size: 12px; font-weight: 600; margin: 3px 0 5px; }
-.block-hash  { font-family: var(--mono); font-size: 10px; color: var(--indigo-bright); opacity: 0.85; }
+.block-hash  { font-family: var(--mono); font-size: 10px; color: var(--accent-bright); opacity: 0.85; }
 
 /* ── layout ───────────────────────────────────────────────────────────── */
 
@@ -403,10 +431,10 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
   cursor: pointer;
   transition: background 120ms ease, border-left-color 120ms ease;
 }
-.queue-item:hover { background: rgba(99, 102, 241, 0.06); }
+.queue-item:hover { background: rgba(255, 255, 255, 0.033); }
 .queue-item[aria-current='true'] {
-  background: var(--indigo-dim);
-  border-left-color: var(--indigo);
+  background: var(--accent-dim);
+  border-left-color: var(--accent);
 }
 
 /* ── misc ─────────────────────────────────────────────────────────────── */
@@ -417,7 +445,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
   letter-spacing: 0.22em;
   font-size: 13px;
 }
-.mark span { color: var(--indigo-bright); }
+.mark span { color: var(--accent-bright); }
 
 .alert {
   border: 1px solid var(--red);
@@ -425,7 +453,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
   border-radius: var(--r);
   padding: 14px 16px;
 }
-.alert-amber { border-color: rgba(210, 153, 34, 0.5); background: var(--amber-dim); }
+.alert-amber { border-color: rgba(224, 179, 65, 0.5); background: var(--amber-dim); }
 
 .stack { display: flex; flex-direction: column; gap: 4px; }.row { display: flex; gap: 12px; align-items: baseline; }
 .between { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -445,23 +473,23 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
 
 .spin {
   width: 14px; height: 14px;
-  border: 2px solid var(--indigo-line);
-  border-top-color: var(--indigo-bright);
+  border: 2px solid var(--accent-line);
+  border-top-color: var(--accent-bright);
   border-radius: 50%;
   animation: spin 700ms linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Cards that are themselves links get a lift and an indigo edge on hover. */
+/* Cards that are themselves links get a lift and an accent edge on hover. */
 .hover-lift {
   transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 a:hover > .hover-lift {
-  border-color: var(--border-indigo);
+  border-color: var(--border-accent);
   transform: translateY(-2px);
-  box-shadow: 0 0 0 1px var(--indigo-dim), 0 14px 34px rgba(1, 4, 9, 0.7);
+  box-shadow: 0 0 0 1px var(--accent-dim), 0 14px 34px rgba(1, 4, 9, 0.7);
 }
-a:hover > .hover-lift h3 { color: var(--indigo-bright); }
+a:hover > .hover-lift h3 { color: var(--accent-bright); }
 
 /* ── landing ──────────────────────────────────────────────────────────────
    The three consoles are one story told in order, not five equal doors, so
@@ -489,10 +517,11 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 }
 
 .home-h1 {
+  font-weight: 500;
   font-size: 36px;
-  line-height: 1.15;
+  line-height: 1.13;
   margin: 10px 0 0;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.032em;
   /* The line break after "the work." is written into the markup, so the
      second clause must not wrap again — "sign for / it" splits the only
      phrase on the page that has to land whole. */
@@ -544,7 +573,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   right: 0;
   top: -1px;
   height: 2px;
-  background: linear-gradient(90deg, var(--indigo-bright), transparent);
+  background: linear-gradient(90deg, var(--accent-bright), transparent);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -552,15 +581,15 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 
 .path-step:hover {
   background: var(--surface-2);
-  border-color: var(--border-indigo);
+  border-color: var(--border-accent);
   z-index: 3;
 }
 .path-step:hover::after { transform: scaleX(1); }
-.path-step:hover .path-name { color: var(--indigo-bright); }
+.path-step:hover .path-name { color: var(--accent-bright); }
 .path-step:hover .path-n {
   color: var(--bg);
-  background: var(--indigo-bright);
-  border-color: var(--indigo-bright);
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
 }
 .path-step .path-outcome { transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1); }
 .path-step:hover .path-outcome { transform: translateX(4px); }
@@ -592,7 +621,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   padding-top: 12px;
   border-top: 1px dashed var(--border-strong);
   font-size: 12.5px;
-  color: var(--indigo-bright);
+  color: var(--accent-bright);
 }
 
 /* ── selectable tiles ─────────────────────────────────────────────────────
@@ -623,7 +652,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   top: 0;
   bottom: 0;
   width: 2px;
-  background: var(--indigo-bright);
+  background: var(--accent-bright);
   transform: scaleY(0);
   transform-origin: top;
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -636,15 +665,15 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 }
 
 .tile[aria-pressed='true'] {
-  border-color: var(--border-indigo);
-  background: rgba(99, 102, 241, 0.08);
+  border-color: var(--border-accent);
+  background: rgba(255, 255, 255, 0.044);
 }
 .tile[aria-pressed='true']::before { transform: scaleY(1); }
 .tile:disabled { cursor: default; opacity: 0.55; }
 
 .tile-name { font-size: 13px; font-weight: 600; }
 .tile-line { font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
-.tile-want { font-size: 11.5px; color: var(--indigo-bright); }
+.tile-want { font-size: 11.5px; color: var(--accent-bright); }
 
 /* ── labelled facts ───────────────────────────────────────────────────────
    A two-column grid rather than a stacked list, because these are read by
@@ -722,7 +751,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background:
-    radial-gradient(120% 140% at 100% 0%, rgba(99, 102, 241, 0.08), transparent 60%),
+    radial-gradient(120% 140% at 100% 0%, rgba(255, 255, 255, 0.044), transparent 60%),
     var(--surface);
 }
 
@@ -745,8 +774,8 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   font-family: var(--mono);
   font-size: 8px;
   letter-spacing: 0.14em;
-  color: var(--indigo);
-  border: 1.5px solid var(--indigo);
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
   border-radius: 3px;
   padding: 3px 6px;
   transform: rotate(-7deg);
@@ -765,7 +794,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   transition: border-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
 .unbuilt-item:hover {
-  border-color: var(--border-indigo);
+  border-color: var(--border-accent);
   color: var(--ink);
   transform: translateY(-1px);
 }
@@ -832,7 +861,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--r-lg);
   background:
-    radial-gradient(120% 120% at 0% 0%, rgba(99, 102, 241, 0.16), transparent 58%),
+    radial-gradient(120% 120% at 0% 0%, rgba(255, 255, 255, 0.088), transparent 58%),
     var(--surface-2);
   /* A single hairline of light along the top edge, the way a physical card
      catches light on its bevel. Not a glow — the border still does the work. */
@@ -851,10 +880,10 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   place-items: center;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--indigo-line);
+  border: 1px solid var(--accent-line);
   border-radius: var(--r);
-  color: var(--indigo-bright);
-  background: rgba(99, 102, 241, 0.09);
+  color: var(--accent-bright);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .idcard-glyph svg {
@@ -940,33 +969,33 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 }
 
 /* Tones. The accent carries meaning everywhere else in this console, so it
-   does here too: indigo for an identity in good standing, amber for one a
+   does here too: green for an identity in good standing, amber for one a
    human still has to settle, red for a refusal. A refusal is drawn as a card
    at all — rather than as an error — because a signed refusal is a real
    credential and a contract needs to be able to hold one. */
 .idcard-amber {
   background:
-    radial-gradient(120% 120% at 0% 0%, rgba(210, 153, 34, 0.16), transparent 58%),
+    radial-gradient(120% 120% at 0% 0%, rgba(224, 179, 65, 0.16), transparent 58%),
     var(--surface-2);
 }
 .idcard-amber .idcard-glyph {
   color: var(--amber-bright);
-  border-color: rgba(210, 153, 34, 0.35);
+  border-color: rgba(224, 179, 65, 0.35);
   background: var(--amber-dim);
 }
 .idcard-amber .idcard-glyph svg { filter: drop-shadow(0 0 7px rgba(227, 179, 65, 0.5)); }
 
 .idcard-red {
   background:
-    radial-gradient(120% 120% at 0% 0%, rgba(248, 81, 73, 0.14), transparent 58%),
+    radial-gradient(120% 120% at 0% 0%, rgba(255, 95, 86, 0.14), transparent 58%),
     var(--surface-2);
 }
 .idcard-red .idcard-glyph {
   color: var(--red);
-  border-color: rgba(248, 81, 73, 0.35);
+  border-color: rgba(255, 95, 86, 0.35);
   background: var(--red-dim);
 }
-.idcard-red .idcard-glyph svg { filter: drop-shadow(0 0 7px rgba(248, 81, 73, 0.45)); }
+.idcard-red .idcard-glyph svg { filter: drop-shadow(0 0 7px rgba(255, 95, 86, 0.45)); }
 
 /* ── the sequence rail ────────────────────────────────────────────────────
    The three steps are an order, and an order is only useful while you are
@@ -1016,13 +1045,13 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 .rail-done { color: var(--ink-3); }
 .rail-done:hover { color: var(--ink); background: var(--surface-2); }
 .rail-done .rail-n {
-  border-color: var(--indigo);
-  color: var(--indigo-bright);
+  border-color: var(--accent);
+  color: var(--accent-bright);
   font-size: 10px;
 }
 
-.rail-now { color: var(--ink); background: var(--indigo-dim); }
-.rail-now .rail-n { border-color: var(--indigo-bright); color: var(--indigo-bright); }
+.rail-now { color: var(--ink); background: var(--accent-dim); }
+.rail-now .rail-n { border-color: var(--accent-bright); color: var(--accent-bright); }
 
 /* Not greyed into illegibility: the point of showing an unreached step is that
    it can be read. It is dimmer than the current one and carries no affordance,
@@ -1077,7 +1106,7 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 .next {
   margin-top: 20px;
   padding: 16px 0 2px 16px;
-  border-left: 2px solid var(--indigo);
+  border-left: 2px solid var(--accent);
 }
 
 /* ── responsive ───────────────────────────────────────────────────────────
@@ -1169,8 +1198,8 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 .wm-page { max-width: 1240px; margin: 0 auto; padding: 26px 22px 72px; }
 
 .wm-head { max-width: 760px; margin-bottom: 28px; }
-.wm-h1 { font-size: 38px; line-height: 1.15; margin: 8px 0 16px; letter-spacing: -0.02em; }
-.wm-hl { color: var(--indigo-bright); }
+.wm-h1 { font-size: 40px; line-height: 1.12; margin: 8px 0 16px; letter-spacing: -0.034em; font-weight: 500; }
+.wm-hl { color: var(--accent-bright); }
 .wm-lede { max-width: 640px; font-size: 15px; line-height: 1.65; }
 
 .wm-status { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
@@ -1181,19 +1210,25 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   border: 1px solid var(--border-strong); color: var(--ink-2);
   background: rgba(255,255,255,0.03);
 }
-.wm-pill.wm-ok { background: var(--green-dim); border-color: rgba(63,185,80,0.4); color: var(--green); }
-.wm-pill.wm-waiting { background: var(--amber-dim); border-color: rgba(210,153,34,0.4); color: var(--amber-bright); }
-.wm-pill.wm-tier-light { background: var(--green-dim); border-color: rgba(63,185,80,0.4); color: var(--green); }
-.wm-pill.wm-tier-standard { background: var(--amber-dim); border-color: rgba(210,153,34,0.4); color: var(--amber-bright); }
-.wm-pill.wm-tier-critical { background: var(--red-dim); border-color: rgba(248,81,73,0.4); color: var(--red); }
+.wm-pill.wm-ok { background: var(--green-dim); border-color: var(--accent-line); color: var(--green); }
+.wm-pill.wm-waiting { background: var(--amber-dim); border-color: rgba(224, 179, 65, 0.4); color: var(--amber-bright); }
+.wm-pill.wm-tier-light { background: var(--green-dim); border-color: var(--accent-line); color: var(--green); }
+.wm-pill.wm-tier-standard { background: var(--amber-dim); border-color: rgba(224, 179, 65, 0.4); color: var(--amber-bright); }
+.wm-pill.wm-tier-critical { background: var(--red-dim); border-color: rgba(255, 95, 86, 0.4); color: var(--red); }
 
 .wm-split { display: grid; grid-template-columns: 1fr 420px; gap: 20px; align-items: start; }
 
 .wm-pane {
-  border: 1px solid var(--border); border-radius: var(--r);
-  background: var(--surface); padding: 18px; min-height: 340px;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 18px; min-height: 340px;
+  background-color: var(--surface);
+  background-image: var(--dots); background-size: var(--dots-size);
 }
-.wm-pane-human { border-color: var(--border-indigo); background: var(--bg-elevated); position: sticky; top: 18px; }
+.wm-pane-human {
+  border-color: var(--border-accent); background-color: var(--bg-elevated);
+  background-image: var(--dots-accent); background-size: var(--dots-size);
+  position: sticky; top: 18px;
+}
 .wm-pane-head {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 12px; margin-bottom: 14px; padding-bottom: 12px;
@@ -1222,17 +1257,17 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 .wm-at { margin-left: auto; font-family: var(--mono); }
 .wm-call-body { padding: 0 12px 12px; border-top: 1px solid var(--border); }
 
-.wm-call.wm-refused { border-color: rgba(248,81,73,0.4); }
-.wm-call.wm-handoff { border-color: var(--border-indigo); }
+.wm-call.wm-refused { border-color: rgba(255, 95, 86, 0.4); }
+.wm-call.wm-handoff { border-color: var(--border-accent); }
 
 .wm-verdict {
   font-family: var(--mono); font-size: 10.5px; padding: 2px 7px;
   border-radius: 999px; border: 1px solid var(--border-strong); color: var(--ink-2);
 }
-.wm-verdict.wm-ok { color: var(--green); border-color: rgba(63,185,80,0.4); }
-.wm-verdict.wm-err { color: var(--amber-bright); border-color: rgba(210,153,34,0.4); }
-.wm-verdict.wm-refused { color: var(--red); border-color: rgba(248,81,73,0.45); background: var(--red-dim); }
-.wm-verdict.wm-handoff { color: var(--indigo-bright); border-color: var(--border-indigo); background: var(--indigo-dim); }
+.wm-verdict.wm-ok { color: var(--green); border-color: var(--accent-line); }
+.wm-verdict.wm-err { color: var(--amber-bright); border-color: rgba(224, 179, 65, 0.4); }
+.wm-verdict.wm-refused { color: var(--red); border-color: rgba(255, 95, 86, 0.45); background: var(--red-dim); }
+.wm-verdict.wm-handoff { color: var(--accent-bright); border-color: var(--border-accent); background: var(--accent-dim); }
 .wm-verdict.wm-waiting { color: var(--ink-3); }
 
 .wm-json {
@@ -1247,8 +1282,8 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 .wm-gate { }
 .wm-tier-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .wm-depth {
-  font-size: 13px; color: var(--ink); background: var(--indigo-dim);
-  border-left: 2px solid var(--indigo); padding: 10px 12px;
+  font-size: 13px; color: var(--ink); background: var(--accent-dim);
+  border-left: 2px solid var(--accent); padding: 10px 12px;
   border-radius: 0 var(--r-sm) var(--r-sm) 0; margin: 16px 0;
 }
 .wm-depth-sm { font-size: 12.5px; color: var(--ink); margin: 10px 0 6px; line-height: 1.5; }
@@ -1269,10 +1304,10 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
   background: var(--bg); color: var(--ink);
   border: 1px solid var(--border-strong); border-radius: var(--r-sm);
 }
-.wm-input:focus { outline: 2px solid var(--indigo-bright); outline-offset: 1px; }
+.wm-input:focus { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
 
 .wm-critical {
-  border: 1px solid rgba(248,81,73,0.3); background: var(--red-dim);
+  border: 1px solid rgba(255, 95, 86, 0.3); background: var(--red-dim);
   border-radius: var(--r-sm); padding: 12px; margin-top: 16px;
 }
 
@@ -1300,15 +1335,21 @@ a:hover > .hover-lift h3 { color: var(--indigo-bright); }
 .wm-tool {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   border: 1px solid var(--border); border-radius: var(--r-sm);
-  padding: 11px 13px; background: var(--surface); font-size: 13px;
+  padding: 11px 13px; font-size: 13px;
+  background-color: var(--surface);
+  background-image: var(--dots); background-size: var(--dots-size);
 }
 .wm-tool code { font-family: var(--mono); font-size: 12.5px; }
-.wm-tool.wm-refused { border-color: rgba(248,81,73,0.4); background: rgba(248,81,73,0.05); }
+.wm-tool.wm-refused { border-color: rgba(255, 95, 86, 0.4); background-color: rgba(255, 95, 86, 0.05); }
 
-.wm-tier-card { border: 1px solid var(--border); border-radius: var(--r); padding: 16px; background: var(--surface); }
-.wm-tier-card.wm-tier-light { border-color: rgba(63,185,80,0.3); }
-.wm-tier-card.wm-tier-standard { border-color: rgba(210,153,34,0.3); }
-.wm-tier-card.wm-tier-critical { border-color: rgba(248,81,73,0.3); }
+.wm-tier-card {
+  border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px;
+  background-color: var(--surface);
+  background-image: var(--dots); background-size: var(--dots-size);
+}
+.wm-tier-card.wm-tier-light { border-color: var(--accent-line); }
+.wm-tier-card.wm-tier-standard { border-color: rgba(224, 179, 65, 0.3); }
+.wm-tier-card.wm-tier-critical { border-color: rgba(255, 95, 86, 0.3); }
 .wm-eg { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-bottom: 0; }
 
 @media (max-width: 1080px) {

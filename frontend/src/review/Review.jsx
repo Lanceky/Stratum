@@ -348,7 +348,7 @@ function Timeline({ events }) {
               {e.payload?.actor && (
                 <span
                   className="mono"
-                  style={{ marginLeft: 6, color: e.payload.actor === 'human' ? 'var(--indigo-bright)' : 'var(--ink-3)' }}
+                  style={{ marginLeft: 6, color: e.payload.actor === 'human' ? 'var(--accent-bright)' : 'var(--ink-3)' }}
                 >
                   {e.payload.actor}
                 </span>
